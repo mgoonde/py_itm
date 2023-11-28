@@ -21,7 +21,7 @@ p = argparse.ArgumentParser()
 
 # -fname FILENAME -sh SHIFT_TYPE -st SYM_THR -rcut RCUT -combo GET_COMBOS
 p.add_argument("-fname","--filename",help="Input filename")
-p.add_argument("-shift","--shift_type",help="Type of shift: gc/am")
+p.add_argument("-shift","--shift_type",help="Type of shift: gc/atm")
 p.add_argument("-st","--sym_thr",help="Symmetry threshold for SOFI")
 p.add_argument("-rcut","--rcut",help="local env cutoff")
 p.add_argument("-combo","--get_combos",help="make combos of found Ops")
