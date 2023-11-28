@@ -9,12 +9,12 @@ Playing with MPI in python3.
    - `ovito`:
 
      ```
-       pip3 install ovito
+     pip3 install ovito
      ```
 
    - `mpi4py`:
      ```
-       pip3 install mpi4py
+     pip3 install mpi4py
      ```
 
  - The IRA/SOFI library (provided here as git submodule).
@@ -24,26 +24,26 @@ Playing with MPI in python3.
 Clone the repository (SSH/https, you choose):
 
 ```
-    git clone git@github.com:mgoonde/py_itm.git your/path/name
-    cd your/path/name
+git clone git@github.com:mgoonde/py_itm.git your/path/name
+cd your/path/name
 ```
 
 Initialize and update submodules (only needed the first time after clone):
 
 ```
-    git submodule update --init
+git submodule update --init
 ```
 
 Compile IRA/SOFI:
 
 ```
-    cd IRA/src ; make all; cd -
+cd IRA/src ; make all; cd -
 ```
 
 Add IRA python interface directory to `PYTHONPATH` env variable. Add in your `.bashrc`:
 
 ```
-    export PYTHONPATH=/your/path/name/IRA/interface:$PYTHONPATH
+export PYTHONPATH=/your/path/name/IRA/interface:$PYTHONPATH
 ```
 
 ## Run
@@ -51,7 +51,7 @@ Add IRA python interface directory to `PYTHONPATH` env variable. Add in your `.b
 Run the code as:
 
 ```
-    mpiexec -n N python3 py_itm.py -fname FILE -rcut RCUT -shift SHIFT -st SYM_THR -combo DO_COMBO
+mpiexec -n N python3 py_itm.py -fname FILE -rcut RCUT -shift SHIFT -st SYM_THR -combo DO_COMBO
 ```
 
 where ALL of the following must be set:
@@ -64,7 +64,7 @@ where ALL of the following must be set:
 Example call:
 
 ```
-    mpiexec -n 8 python3 py_itm.py -fname ../run1/dump2.lammpstrj -rcut 2.8 -shift gc -combo T -st 0.3
+mpiexec -n 8 python3 py_itm.py -fname ../run1/dump2.lammpstrj -rcut 2.8 -shift gc -combo T -st 0.3
 ```
 
 
