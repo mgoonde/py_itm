@@ -1,0 +1,3 @@
+[submodule "IRA"]
+	path = IRA
+	url = https://github.com/mammasmias/IterativeRotationsAssignments
