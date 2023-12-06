@@ -12,59 +12,41 @@ def read_xyz(fname):
     return nat, typ, coords, options
 
 
-
-def binary_search_range(arr, target):
-    # search for starting and final index of elements in neighbor list,
-    # which has elements of [ idx1, idx2 ], where idx1 is the origin atom,
-    # and idx2 is neighbor. The neighbor list has to be ordered by idx1 on entry.
-    low = 0
-    high = len(arr) - 1
-    start_index = -1
-    end_index = -1
-
-    # Find the start index
-    while low <= high:
-        mid = (low + high) // 2
-        if arr[mid][0] == target:
-            start_index = mid
-            high = mid - 1
-        elif arr[mid][0] < target:
-            low = mid + 1
-        else:
-            high = mid - 1
-
-    low, high = 0, len(arr) - 1
-
-    # Find the end index
-    while low <= high:
-        mid = (low + high) // 2
-        if arr[mid][0] == target:
-            end_index = mid
-            low = mid + 1
-        elif arr[mid][0] < target:
-            low = mid + 1
-        else:
-            high = mid - 1
-
-    return start_index, end_index
-
-def extract_elements(neiglist, veclist, target):
+def count_nn( neiglist ):
     import numpy as np
-    ## find the starting and final index of arr where first element == target
-    start_index, end_index = binary_search_range(neiglist, target)
+    # get count of neighbours for each atom
+    u_val, cnt = np.unique( neiglist[:,0], return_counts=True )
+    # perform cumulative sum
+    cnt_sum = np.cumsum( cnt )
+    return cnt_sum
 
-    res_idx = np.empty([0], dtype=int)
-    res_vec = np.ndarray([0,0], dtype=np.float64)
-    ## put the target idx into first place
-    # res_idx.append( target )
-    res_idx = np.append( res_idx, target )
-    res_vec = np.append( res_vec, np.array([0.0,0.0,0.0]))
+def extract_elements( neiglist, veclist, nn_sum, target ):
+    '''
+    nn_sum is the cumulative sum of neighbors
+    '''
+    import numpy as np
+    start_index = nn_sum[ target - 1 ]
+    end_index = nn_sum[ target ]
+    if target == 0:
+        start_index = 0
 
+    # total size +1 because first element is not counted
+    n = end_index - start_index + 1
 
-    ## extend the result with array values
-    # res_idx.extend( neiglist[start_index:end_index+1, 1] )
-    res_idx = np.append( res_idx, neiglist[start_index:end_index+1, 1])
-    for v in veclist[start_index:end_index+1]:
-        res_vec = np.vstack( [res_vec, v] )
+    # declate arrays
+    res_idx = np.empty([n], dtype=np.int32)
+    res_vec = np.ndarray([n,3], dtype=np.float64)
+
+    # fill first vector as (0.0, 0.0, 0.0)
+    res_vec[0] = np.array([0.0, 0.0, 0.0])
+    # copy other vectors
+    for i,v in enumerate( veclist[start_index:end_index] ):
+        res_vec[i+1] = v
+
+    # first index is target
+    res_idx[0] = target
+    # copy other indices
+    res_idx[1:] = neiglist[start_index:end_index, 1]
+
     return res_idx, res_vec
 

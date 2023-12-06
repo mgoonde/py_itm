@@ -90,6 +90,8 @@ if rank == 0:
     veclist = np.cast[float](veclist)
     coords = np.cast[float](coords)
 
+    nn_count = count_nn( neiglist )
+
     print(nat, flush=True )
     print( 'Lattice="',lat[0][0], lat[0][1], lat[0][2], lat[1][0], lat[1][1], lat[1][2], lat[2][0], lat[2][1], lat[2][2], '" properties=species:I:1:pos:R:3:id:I:1:structure_type:I:1:dHausdorff:R:1', flush=True)
 
@@ -98,6 +100,7 @@ else:
     typ=None
     neiglist=None
     veclist=None
+    nn_count = None
     coords = None
 
 comm.barrier()
@@ -108,6 +111,7 @@ nat = comm.bcast(nat)
 neiglist = comm.bcast( neiglist, root=0)
 veclist = comm.bcast( veclist, root=0)
 typ = comm.bcast( typ, root=0)
+nn_count = comm.bcast( nn_count, root=0)
 # coords = comm.bcast( coords, root=0)
 
 # number of structures to compute per cpu rank
@@ -130,7 +134,7 @@ for i in range( ob1+rank*per_rank, ob1+(rank+1)*per_rank):
 # for i in range( 1, 5 ) :
 
     ## read from neigh list, also gives coords relative to idx=i
-    idx, coords_loc = extract_elements( neiglist, veclist, i )
+    idx, coords_loc = extract_elements( neiglist, veclist, nn_count, i )
     nat_loc = len(idx)
     typ_loc = np.array(typ[idx],dtype=np.int32)
     if nat_loc == 2:
@@ -162,7 +166,7 @@ if rank == 0:
     if rest > 0:
         for i in range( nat-1, nat-1-rest, -1 ):
             ## read from neigh list, also gives coords relative to idx=i
-            idx, coords_loc = extract_elements( neiglist, veclist, i )
+            idx, coords_loc = extract_elements( neiglist, veclist, nn_count, i )
             nat_loc = len(idx)
             typ_loc = np.array(typ[idx],dtype=np.int32)
             if nat_loc == 2:
