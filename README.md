@@ -28,27 +28,39 @@ Playing with MPI in python3.
 Clone the repository (SSH/https, you choose):
 
 ```
-git clone git@github.com:mgoonde/py_itm.git your/path/name
-cd your/path/name
-```
-
-Initialize and update submodules (only needed the first time after clone):
-
-```
-git submodule update --init
+git clone git@github.com:mgoonde/py_itm.git your/path/to/py_itm
 ```
 
 Compile ITM:
 
 ```
+cd your/path/to/py_itm
 make
 ```
 
-Add the python interface directory to `PYTHONPATH` env variable. Add in your `.bashrc` (edit proper path):
+Add the python interface directory to `PYTHONPATH` env variable. Simplest to add in your `.bashrc` (edit proper path):
 
 ```
 export PYTHONPATH=/your/path/to/py_itm/interf:$PYTHONPATH
 ```
+
+### Compilation errors
+
+In case of errors during compilation, try to figure out in which stage it happened. There are three stages to compile:
+ 1. IRA library
+ 2. the `src`
+ 3. the cython module `py_itm`
+
+IRA library is provided as submodule, if the directory `IRA` is empty, then you need to initialize the submodule manually:
+```
+git submodule update --init
+```
+
+The compilation of IRA requires lapack, please see the `IRA/src/Makefile` in case of problems.
+
+The fortran compiler is set to `gfortran` in `src/Makefile` and in `IRA/src/Makefile`. To use a different compiler, you will need to edit these makefiles. The compilation is currently tested only on `gfortran 11.4.0`.
+
+There could be missing python modules needed for compilation of the cython module `py_itm`, this you will have to figure on your own.
 
 ## Run (outdated)
 

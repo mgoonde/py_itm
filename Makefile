@@ -23,9 +23,7 @@ all: iralib fsrc py
 
 
 iralib:
-
-iralib:
-	@if  echo "`git submodule status | cut -c 1`" = "-" ; then cd IRA; git submodule update --init; fi
+	@if echo "`git submodule status|cut -c 1`" = "-"; then cd IRA; git submodule update --init; fi
 	@cd IRA; git submodule update --init; cd -
 	@cd IRA/src; make all; cd -
 fsrc:
@@ -38,6 +36,7 @@ py:
 
 clean-ira:
 	@cd IRA/src; make clean; cd -
+	@git submodule update IRA
 
 clean-fsrc:
 	@cd src; make clean; cd -
