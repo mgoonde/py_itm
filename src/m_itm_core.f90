@@ -129,8 +129,8 @@ contains
     ! end if
 
     !! set candidates to first index
-    c1(:) = 0; c1(1) = -1
-    c2(:) = 0; c2(1) = -1
+    c1(:) = 0; c1(1) = 1
+    c2(:) = 0; c2(1) = 1
 
 
     !! first try on cshda

@@ -62,25 +62,27 @@ The fortran compiler is set to `gfortran` in `src/Makefile` and in `IRA/src/Make
 
 There could be missing python modules needed for compilation of the cython module `py_itm`, this you will have to figure on your own.
 
-## Run (outdated)
+## Running calculations
 
-Run the code as:
+See the `test` directory.
 
-```
-mpiexec -n N python3 py_itm.py -fname FILE -rcut RCUT -shift SHIFT -st SYM_THR -combo DO_COMBO
-```
+<!-- Run the code as: -->
 
-where ALL of the following must be set:
- - `-fname FILE`    : file that ovito can read, i.e. lammps data, xyz, etc.
- - `-rcut RCUT`     : radial cutoff value for local environments (`float` type value).
- - `-shift SHIFT`   : keyword with possible values `gc` or `atm`, it has effect of the found PG, sometimes.
- - `-st SYM_THR`    : threshold for accepted symmetry operations, in units of atomic distance (`float` type value)
- - `-combo DO_COMBO`: logical `T`/`F` whether to perform combinations of the found symmetry operations for each structure.
+<!-- ``` -->
+<!-- mpiexec -n N python3 py_itm.py -fname FILE -rcut RCUT -shift SHIFT -st SYM_THR -combo DO_COMBO -->
+<!-- ``` -->
 
-Example call:
+<!-- where ALL of the following must be set: -->
+<!--  - `-fname FILE`    : file that ovito can read, i.e. lammps data, xyz, etc. -->
+<!--  - `-rcut RCUT`     : radial cutoff value for local environments (`float` type value). -->
+<!--  - `-shift SHIFT`   : keyword with possible values `gc` or `atm`, it has effect of the found PG, sometimes. -->
+<!--  - `-st SYM_THR`    : threshold for accepted symmetry operations, in units of atomic distance (`float` type value) -->
+<!--  - `-combo DO_COMBO`: logical `T`/`F` whether to perform combinations of the found symmetry operations for each structure. -->
 
-```
-mpiexec -n 8 python3 py_itm.py -fname ../run1/dump2.lammpstrj -rcut 2.8 -shift gc -combo T -st 0.3
-```
+<!-- Example call: -->
+
+<!-- ``` -->
+<!-- mpiexec -n 8 python3 py_itm.py -fname ../run1/dump2.lammpstrj -rcut 2.8 -shift gc -combo T -st 0.3 -->
+<!-- ``` -->
 
 

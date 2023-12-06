@@ -27,3 +27,5 @@ Possible options for a template are:
 The output is an extended-xyz format, readable by ovito. The output properties are `StructureType` and `dHausdorff`.
 The `StructureType` property has the value of the index of the template which that local configurations matches to, *e.g.* `StructureType=2` means the atom has been matched to the 2nd template that has been added in the beginning of the `test_itm.py` program. The value of `dHausdorff` is the value of the Hausdorff distance with which this atom has matched to given template.
 
+The file `itm_struc_typ2.ovmod` can be imported into ovito modifiers for visualization of results.
+
