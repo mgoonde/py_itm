@@ -23,20 +23,23 @@ all: iralib fsrc py
 
 
 iralib:
+	@echo ' =============== now compiling IRA library'
 	@if echo "`git submodule status|cut -c 1`" = "-"; then cd IRA; git submodule update --init; fi
 	@cd IRA; git submodule update --init; cd -
 	@cd IRA/src; make all; cd -
 fsrc:
+	@echo ' =============== now compiling the itm src'
 	@cd src; make; cd -
 
 py:
+	@echo ' =============== now compiling the py_itm extension'
 	@cd interf; python3 setup.py build_ext --inplace; cd -
 
 
 
 clean-ira:
 	@cd IRA/src; make clean; cd -
-	@git submodule update IRA
+	@git submodule deinit IRA
 
 clean-fsrc:
 	@cd src; make clean; cd -

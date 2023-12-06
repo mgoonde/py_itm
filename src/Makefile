@@ -64,7 +64,6 @@ $(BIN):
 # rules for each
 
 $(LIB): $(modulo) $(apifile.o) $(nautyfile.o)
-	@echo " >>>>>>>>>>>>>> Library Compilation"
 	${F90} -o $(LIBD)/$@.so -shared -fPIC $^ -ldl $(IRALIB)
 
 
