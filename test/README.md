@@ -1,6 +1,6 @@
 # Test of pyitm:
 
-at the beginning, define 3 template structures which are read from files: `cubd_2n`, `int_2n`, and `vac1_2n`. Then match these templates over all the input structure.
+The main program file is `test_itm.py`, which at the beginning defines 3 template structures which are read from files: `cubd_2n`, `int_2n`, and `vac1_2n`. Then match these templates over all the input structure.
 
 ### Run
 Run test as:

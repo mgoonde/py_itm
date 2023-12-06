@@ -47,7 +47,7 @@ ierr = itm.add_template( nat, typ, coords, options )
 # if rank ==0:
 #     itm.print_all_templates()
 
-comm.barrier()
+# comm.barrier()
 
 # import sys
 # sys.exit()
@@ -66,9 +66,6 @@ if rank == 0:
     coords = dc.particles.position
     lat = dc.cell
 
-    #
-    ## set the finder function
-    #
 
     # obtain max rcut from templates
     ## NOTE: cannot do when any template is rescaled, default to -rcut from input
@@ -90,6 +87,7 @@ if rank == 0:
     veclist = np.cast[float](veclist)
     coords = np.cast[float](coords)
 
+    ## count the neighbor array
     nn_count = count_nn( neiglist )
 
     print(nat, flush=True )
@@ -137,7 +135,7 @@ for i in range( ob1+rank*per_rank, ob1+(rank+1)*per_rank):
     idx, coords_loc = extract_elements( neiglist, veclist, nn_count, i )
     nat_loc = len(idx)
     typ_loc = np.array(typ[idx],dtype=np.int32)
-    if nat_loc == 2:
+    if nat_loc <= 2:
         # this shoudl return error
         print("site:",i, "has too few neighbors:",nat_loc, flush=True)
         msg = "Error, local env too small, see message above."
@@ -169,7 +167,7 @@ if rank == 0:
             idx, coords_loc = extract_elements( neiglist, veclist, nn_count, i )
             nat_loc = len(idx)
             typ_loc = np.array(typ[idx],dtype=np.int32)
-            if nat_loc == 2:
+            if nat_loc <= 2:
                 # this shoudl return error
                 print("site:",i, "has too few neighbors:",nat_loc, flush=True)
                 msg = "Error, local env too small, see message above."
@@ -182,12 +180,13 @@ if rank == 0:
             matched_dhs[i] = matched_dh
 
 
+comm.barrier()
 tot_i = np.zeros( nat, dtype=int )
 comm.Allreduce( [matched_arr, MPI.INT], [tot_i, MPI.INT], op=MPI.SUM)
 tot_d = np.zeros( nat, dtype=float)
 comm.Allreduce( [matched_dhs, MPI.DOUBLE], [tot_d, MPI.DOUBLE], op=MPI.SUM)
 
-comm.barrier()
+## print the result
 if rank ==0:
     for i, v in enumerate(coords):
         print( "%i %14.8f %14.8f %14.8f %i %s %11.6f" %(typ[i], v[0], v[1], v[2], i, tot_i[i], tot_d[i] ) )
