@@ -17,6 +17,10 @@ Playing with MPI in python3.
      pip3 install mpi4py
      ```
 
+   - `cython`:
+     ```
+     pip3 install cython
+     ```
  - The IRA/SOFI library (provided here as git submodule).
 
 ## Installation
@@ -34,19 +38,19 @@ Initialize and update submodules (only needed the first time after clone):
 git submodule update --init
 ```
 
-Compile IRA/SOFI:
+Compile ITM:
 
 ```
-cd IRA/src ; make all; cd -
+make
 ```
 
-Add IRA python interface directory to `PYTHONPATH` env variable. Add in your `.bashrc`:
+Add the python interface directory to `PYTHONPATH` env variable. Add in your `.bashrc` (edit proper path):
 
 ```
-export PYTHONPATH=/your/path/name/IRA/interface:$PYTHONPATH
+export PYTHONPATH=/your/path/to/py_itm/interf:$PYTHONPATH
 ```
 
-## Run
+## Run (outdated)
 
 Run the code as:
 
