@@ -19,7 +19,7 @@ Playing with MPI in python3.
 
    - `cython`:
      ```
-     pip3 install cython
+     pip3 install Cython
      ```
  - The IRA/SOFI library (provided here as git submodule).
 
