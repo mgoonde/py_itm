@@ -5,9 +5,28 @@ module itm
   use m_template
   implicit none
 
+  integer, parameter :: &
+       ITM_DTYPE_UNKNOWN = -1, &
+       ITM_DTYPE_INT     = 1, &
+       ITM_DTYPE_REAL    = 2, &
+       ITM_DTYPE_STRING  = 3
+
+
   type :: t_itm_ptr
      integer :: ntemplate
      type( linked_list ) :: template_list
+
+     integer :: nat                         !! number of all atoms
+     integer, allocatable :: neighlist(:,:) !! neighbor list from ovito
+     real, allocatable :: veclist(:,:)      !! vector list from ovito
+     integer, allocatable :: count_n(:)     !! cumulative sum of neighs
+     integer, allocatable :: typ(:)         !! all atomic types
+     !!
+     !! results
+     integer, allocatable :: site_template(:)
+     real, allocatable :: site_dh(:)
+     character(len=10), allocatable :: site_pg(:)
+     real, allocatable :: site_strain(:)
    contains
      procedure :: get_template
   end type t_itm_ptr
@@ -26,6 +45,8 @@ contains
     fptr% template_list = linked_list()
     fptr% ntemplate = 0
 
+    fptr% nat = -1
+
     cptr = c_loc(fptr)
   end function itm_create
 
@@ -37,6 +58,12 @@ contains
     call c_f_pointer( cptr, fptr )
 
     call fptr% template_list% destroy()
+    if( allocated(fptr% veclist))deallocate( fptr% veclist )
+    if( allocated(fptr% neighlist))deallocate( fptr% neighlist)
+    if( allocated( fptr% typ))deallocate( fptr% typ )
+    if( allocated( fptr% count_n))deallocate( fptr% count_n )
+    if( allocated( fptr% site_template))deallocate( fptr% site_template )
+    if( allocated( fptr% site_dh))deallocate( fptr% site_dh )
     deallocate( fptr )
   end subroutine itm_free
 
@@ -98,6 +125,310 @@ contains
 
     deallocate( mode )
   end function itm_add_template
+
+
+  function itm_set_data( cptr, cname, ctyp, crank, csize, cval)result(cerr)bind(C, name="itm_set_data")
+    use m_itm_core, only: count_nn
+    implicit none
+    type( c_ptr ), value :: cptr
+    type( c_ptr ), value :: cname
+    integer( c_int ), value :: ctyp
+    integer( c_int ), value :: crank
+    type( c_ptr ), value :: csize
+    type( c_ptr ), value :: cval
+    integer( c_int ) :: cerr
+
+    type( t_itm_ptr ), pointer :: fptr
+    integer :: dtyp, drank
+    character(:), allocatable :: fname
+    integer( c_int ), pointer :: isize(:)
+    integer( c_int ), pointer :: iptr, i1d(:), i2d(:,:)
+    real( c_double ), pointer :: r1d(:), r2d(:,:)
+
+    integer :: i
+
+    cerr = -1_c_int
+    call c_f_pointer( cptr, fptr )
+
+    allocate( fname, source=c2f_string(cname) )
+    dtyp = int( ctyp )
+    drank = int( crank )
+
+    ! write(*,*) "got name:",fname
+    ! write(*,*) dtyp, drank
+
+
+
+    select case( fname )
+    case( "nat" )
+       !! check if dtyp is as expected
+       if( dtyp /= ITM_DTYPE_INT ) return
+       !! check if rank is as expected
+       if( drank /= 0 ) return
+       !! get data
+       call c_f_pointer( cval, iptr )
+       fptr% nat = int( iptr )
+       !!
+       !! allocate arrays for results, if exist destroy
+       !!
+       if( allocated( fptr% site_template))deallocate( fptr% site_template)
+       allocate( fptr% site_template(1:fptr% nat), source=0)
+       !!
+       if( allocated( fptr% site_dh))deallocate( fptr% site_template)
+       allocate( fptr% site_dh(1:fptr% nat), source = 99.9)
+       !!
+       ! if( allocated( fptr% site_strain))deallocate( fptr% site_strain)
+       ! allocate( fptr% site_strain(1:nat), source=0.0)
+       !!
+       ! if( allocated( fptr% site_pg)) deallocate( fptr% site_pg)
+       ! allocate( fptr% site_pg(1:nat), source = "none")
+
+    case( "typ" )
+       !! check if dtyp is as expected
+       if( dtyp /= ITM_DTYPE_INT ) return
+       !! check if rank is as expected
+       if( drank /= 1 ) return
+       !! get size
+       call c_f_pointer( csize, isize, shape=[drank] )
+       !! get data
+       call c_f_pointer( cval, i1d, shape=isize )
+       !! overwrite previous data
+       if( allocated(fptr% typ)) deallocate( fptr% typ )
+       allocate( fptr% typ, source=int(i1d) )
+
+    case( "neighlist" )
+       !! check if dtyp is as expected
+       if( dtyp /= ITM_DTYPE_INT ) return
+       !! check if rank is as expected
+       if( drank /= 2 ) return
+       !! get size
+       call c_f_pointer( csize, isize, shape=[drank] )
+       !! get data
+       call c_f_pointer( cval, i2d, shape=isize )
+       !! overwrite previous data
+       if( allocated( fptr% neighlist))deallocate( fptr% neighlist)
+       allocate( fptr% neighlist, source=int(i2d) )
+       !! switch to 1-based index
+       fptr% neighlist = fptr% neighlist + 1
+       ! do i = 1, 40
+       !    write(*,*) fptr% neighlist(:,i)
+       ! end do
+       !! get the count
+       allocate( fptr% count_n(1:fptr% nat), source=0 )
+       call count_nn( size( fptr% neighlist, 1), size(fptr% neighlist, 2), &
+            fptr% neighlist, fptr% nat, fptr% count_n )
+
+
+    case( "veclist" )
+       !! check if dtyp is as expected
+       if( dtyp /= ITM_DTYPE_REAL ) return
+       !! check if rank is as expected
+       if( drank /= 2 ) return
+       !! get size
+       call c_f_pointer( csize, isize, shape=[drank] )
+       !! get data
+       call c_f_pointer( cval, r2d, shape=isize )
+       !! overwrite previous data
+       if( allocated( fptr% veclist))deallocate( fptr% veclist)
+       allocate( fptr% veclist, source=real(r2d))
+       ! do i = 1, 40
+       !    write(*,*) fptr% veclist(:,i)
+       ! end do
+
+
+    case default
+       write(*,*) "name not recognized: ", fname
+       return
+    end select
+
+
+    cerr = 0_c_int
+    deallocate( fname )
+  end function itm_set_data
+
+
+  function itm_compute( cptr, cthr )result( cerr )bind(C, name="itm_compute" )
+    use m_itm_core
+    use omp_lib
+    implicit none
+    type( c_ptr ), value :: cptr
+    real( c_double ), value :: cthr
+    integer( c_int ) :: cerr
+
+    type( t_itm_ptr ), pointer :: fptr
+    integer :: i, j, me, t
+    integer :: nthread
+
+    integer :: nat_loc, n
+    integer, allocatable :: idx_loc(:)
+    integer, allocatable :: typ_loc(:)
+    real, allocatable :: coords_loc(:,:)
+
+    type( t_template ), pointer :: tmplt
+
+    integer, allocatable :: t1(:), t2(:)
+    real, allocatable :: c1(:,:), c2(:,:)
+    real :: scale, dh, dh_old, dthr
+    integer, allocatable :: site_template(:)
+    real, allocatable :: site_dh(:)
+
+    call c_f_pointer( cptr, fptr )
+
+    dthr = real( cthr )
+
+    !$OMP PARALLEL
+    nthread = OMP_GET_NUM_THREADS()
+    !$OMP END PARALLEL
+
+    ! write(*,*) "got threads",nthread
+    cerr = -1_c_int
+    !! check if all data is set
+    ! write(*,*) "nat =",fptr% nat
+    ! write(*,*) "typ",allocated( fptr% typ )
+    ! write(*,*) "veclist",allocated( fptr% veclist )
+    ! write(*,*) "neighlist",allocated( fptr% neighlist )
+
+
+    !$OMP PARALLEL PRIVATE(me, site_template, site_dh )
+    me = OMP_GET_THREAD_NUM()
+    !! allocate result array for each thread
+    allocate( site_dh(1:fptr% nat), source=0.0 )
+    allocate( site_template(1:fptr% nat), source=0 )
+    !$OMP DO PRIVATE(nat_loc, typ_loc, coords_loc, idx_loc, tmplt, n, t1, t2, c1, c2, scale, &
+    !$OMP            dh_old, dh, t )
+    do i = 1, fptr% nat
+    ! do i = 293855, 293856
+       call extract_elements( &
+            size(fptr% neighlist, 1), size( fptr% neighlist, 2), fptr% neighlist,&
+            size(fptr% veclist, 2), fptr% veclist, fptr% nat, fptr% count_n,&
+            i, nat_loc, idx_loc, coords_loc )
+
+       allocate( typ_loc(1:nat_loc) )
+       do j = 1, nat_loc
+          typ_loc(j) = fptr% typ( idx_loc(j))
+       end do
+
+       ! write(*,*) nat_loc
+       ! write(*,*) i
+       ! do j = 1, nat_loc
+       !    write(*,*) typ_loc(j), coords_loc(:,j)
+       ! end do
+
+
+       dh_old = 99.9
+       t = 0
+       do j = 1, fptr% ntemplate
+          nullify( tmplt )
+          tmplt => fptr% get_template( j )
+
+          if( tmplt% nat .ne. nat_loc ) cycle
+
+          n = nat_loc
+
+          allocate( t1, source=tmplt% typ)
+          allocate( t2(1:n), source=typ_loc(1:n) )
+          if( tmplt% ignore_chem ) then
+             !! overwrite atomic types
+             t1(:) = 1; t2(:) = 1
+          end if
+
+          allocate( c1, source=tmplt% coords )
+          allocate( c2, source = coords_loc(:,1:n))
+          if( tmplt% rescale ) then
+             !! find scale of current conf
+             scale = struc_get_scale( n, c2 )
+             !! rescale the template
+             call struc_rescale( tmplt% nat, c1, scale )
+          end if
+
+          dh = struc_get_dh( &
+               tmplt% nat, t1, c1, &
+               n, t2, c2, &
+               1.8, dthr )
+
+          ! write(*,*) i, j, dh
+          if( dh .lt. dh_old ) then
+             dh_old = dh
+             t = j
+          end if
+
+          deallocate( t1, t2 )
+          deallocate( c1, c2 )
+       end do
+
+       if( dh_old < dthr ) then
+          !! !$OMP CRITICAL
+          fptr% site_dh(i) = dh_old
+          fptr% site_template(i) = t
+          !! !$OMP END CRITICAL
+       end if
+
+
+
+       ! write(*,*) i, j, dh_old
+       ! matched_template = match_site( fptr% template_list, i, dthr, dh )
+
+       deallocate( typ_loc, coords_loc, idx_loc )
+    end do
+    !$OMP END DO
+
+    deallocate( site_dh, site_template )
+    !$OMP END PARALLEL
+
+    ! fptr% site_dh(1)=1.23
+    ! fptr% site_template(1)=16
+
+  end function itm_compute
+
+
+  function itm_get_result( cptr, name, cval ) result( cerr ) bind(C, name="itm_get_result" )
+    implicit none
+    type( c_ptr ), value :: cptr
+    type( c_ptr ), value :: name
+    type( c_ptr ), intent(out) :: cval
+    integer( c_int ) :: cerr
+
+    type( t_itm_ptr ), pointer :: fptr
+    character(:), allocatable :: fname
+    integer :: dtyp, drank
+    integer(c_int), pointer :: i1d(:)
+    real( c_double ), pointer :: r1d(:)
+
+    call c_f_pointer( cptr, fptr )
+
+    allocate( fname, source=c2f_string(name) )
+    cerr = -1_c_int
+
+    ! !! get datatype
+    ! dtyp = int( itm_get_dtype( name ) )
+    ! if( dtyp == ITM_DTYPE_UNKNOWN ) then
+    !    write(*,*) "ITM ERROR: unknown data: ",fname
+    !    return
+    ! end if
+
+    ! !! get datarank
+    ! drank = int( itm_get_drank( name ))
+
+    select case( fname )
+    case( "site_template" )
+       ! write(*,*) "here a"
+       allocate( i1d, source=fptr% site_template )
+       ! write(*,*) i1d(1)
+       cval = c_loc( i1d(1) )
+    case( "site_dh" )
+       ! write(*,*) "here b"
+       allocate( r1d, source=fptr% site_dh )
+       ! write(*,*) r1d(1)
+       cval = c_loc( r1d(1) )
+    case default
+       write(*,*) "unknown name:", fname
+       return
+
+    end select
+
+    deallocate( fname )
+    cerr = 0_c_int
+  end function itm_get_result
 
 
   function itm_get_max_rcut( cptr, cerr )result( rcut )bind(C, name="itm_get_max_rcut")
@@ -194,7 +525,7 @@ contains
     matched_tmplt = 0
     matched_dh = 999.9
 
-    kmax_factor = 1.3
+    kmax_factor = 1.8
 
     !! go through list of templates, match each
     do i = 1, fptr% ntemplate
@@ -383,6 +714,93 @@ contains
     end select
 
   end function get_template
+
+  ! function itm_get_dtype( cptr, name )result(ctype)bind(C,name="itm_get_dtype")
+  function itm_get_dtype( name )result(ctype)bind(C,name="itm_get_dtype")
+    implicit none
+    ! type( c_ptr ), value :: cptr
+    type( c_ptr ), value :: name
+    integer( c_int ) :: ctype
+
+    character(:), allocatable :: fname
+    integer :: dtype
+
+    allocate( fname, source=c2f_string(name) )
+
+    dtype = ITM_DTYPE_UNKNOWN
+    select case( fname )
+    case( "nat", "typ", "neighlist", "count_n", "site_template", "ntemplate" )
+       dtype = ITM_DTYPE_INT
+
+    case( "veclist", "site_dh" )
+       dtype = ITM_DTYPE_REAL
+
+    case default
+       dtype = -1
+    end select
+
+    deallocate( fname )
+    ctype = int( dtype, c_int )
+  end function itm_get_dtype
+
+  ! function itm_get_drank( cptr, name )result(crank)bind(C,name="itm_get_drank")
+  function itm_get_drank( name )result(crank)bind(C,name="itm_get_drank")
+    implicit none
+    ! type( c_ptr ), value :: cptr
+    type( c_ptr ), value :: name
+    integer( c_int ) :: crank
+
+    character(:), allocatable :: fname
+    integer :: drank
+
+    allocate( fname, source=c2f_string(name) )
+
+    select case( fname )
+    case( "nat", "ntemplate" )
+       drank = 0
+
+    case( "site_template", "site_dh", "typ", "count_n" )
+       drank = 1
+
+    case( "neighlist", "veclist" )
+       drank = 2
+
+    case default
+       drank = -1
+    end select
+
+    deallocate( fname )
+    crank = int( drank, c_int )
+  end function itm_get_drank
+
+  function itm_get_dsize( cptr, name )result(csize)bind(C,name="itm_get_dsize")
+    !! useful when extracting data
+    implicit none
+    type( c_ptr ), value :: cptr
+    type( c_ptr ), value :: name
+    type( c_ptr ) :: csize
+
+    type( t_itm_ptr ), pointer :: fptr
+    integer( c_int ), pointer :: psize(:)
+    integer, allocatable :: fsize(:)
+
+    character(:), allocatable :: fname
+
+    call c_f_pointer( cptr, fptr )
+
+    allocate( fname, source=c2f_string(name) )
+
+    select case( fname )
+    case( "site_template", "site_dh" )
+       allocate( fsize(1), source = fptr% nat )
+       allocate( psize, source=fsize )
+       csize = c_loc( psize(1) )
+       deallocate( fsize )
+    end select
+
+    deallocate( fname )
+  end function itm_get_dsize
+
 
   FUNCTION c2f_string(ptr) RESULT(f_string)
     use iso_c_binding

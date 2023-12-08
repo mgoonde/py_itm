@@ -14,7 +14,7 @@ libpath = join( mypath, "lib/libitm.so" )
 extensions = [
     Extension(
               "py_itm", ["py_itm.pyx"],
-              extra_objects=[libpath],
+              extra_objects=[libpath, "-fopenmp"],
               define_macros=[("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")],
               )
 ]

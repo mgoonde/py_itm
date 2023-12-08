@@ -13,7 +13,7 @@ endif
 
 # -- gfortran flags
 DL := -ldl -fPIC
-FFLAGS := -Wall -O0 -cpp $(DL) -fdefault-real-8
+FFLAGS := -Wall -O0 -cpp $(DL) -fdefault-real-8 -fopenmp
 FDEBUG := -g -fcheck=all -fbacktrace  #-DDEBUG
 
 

@@ -218,8 +218,10 @@ contains
     dh = 0.0
     do i = 1, nat1
        rdum = coords2_w(:,i) - coords1(:,i)
-       dh = max( dh, sqrt(dot_product(rdum,rdum)))
+!       dh = max( dh, sqrt(dot_product(rdum,rdum)))
+       dh = dh + dot_product( rdum, rdum )
     end do
+    dh = sqrt(dh)/nat1
 
 
 #ifdef DEBUG
@@ -336,6 +338,109 @@ contains
 
   end function count_unique
 
+
+  subroutine count_nn( dim1, dim2, neighlist, nat, count_n )
+    !! get the number of neighbours for each atom,
+    !! the neighlist has entries like: neighlist(j) = ( 3, 462 )
+    !! where the first index is central atom, and second is the neighbor index.
+    !! This routine first counts how many neighbors each atom has, then it
+    !! makes a cumulative sum, which makes it faster to parse the neigharray later on.
+    !!
+    !! Using cumulative sum, the value count_n( target_idx-1 ) is the starting index in the
+    !! neighlist array, and the value count_n( target_idx ) is the final index for atom index target_idx
+    implicit none
+    integer, intent(in) :: dim1
+    integer, intent(in) :: dim2
+    integer, dimension(dim1, dim2), intent(in) :: neighlist
+    integer, intent(in) :: nat
+    integer, dimension(nat), intent(out) :: count_n
+
+    integer :: me, count_me, i, j
+
+    !! neighlist is sorted on the first index, count how many entires
+    !! have the same first index (this is number of neighbors for atom idx1)
+    me = 1
+    count_me = 0
+    do i = 1, dim2
+       !! first index is me
+       j = neighlist(1,i)
+       !! first index changed, write data and reset counter
+       if( j .ne. me ) then
+          count_n(me) = count_me
+          me = j
+          count_me = 0
+       end if
+       !! else increase counter
+       count_me = count_me + 1
+    end do
+    !! the last entry
+    count_n(me) = count_me
+
+    !! now make this a cumulative sum
+    do i = 2, nat
+       count_n(i) = count_n(i-1) + count_n(i)
+    end do
+
+  end subroutine count_nn
+
+
+  subroutine extract_elements( dim1, dim2, neighlist, vldim, veclist, nat, count_n, tgt_idx, nloc, idx, vec )
+    !! extract neighbours and vectors for atom index tgt_idx
+    implicit none
+    integer, intent(in) :: dim1, dim2
+    integer, dimension(dim1, dim2), intent(in) :: neighlist
+    integer, intent(in) :: vldim
+    real, dimension(3,vldim), intent(in) :: veclist
+    integer, intent(in) :: nat
+    integer, dimension(nat), intent(in) :: count_n
+    integer, intent(in) :: tgt_idx
+    integer, intent(out) :: nloc
+    integer, allocatable, intent(out) :: idx(:)
+    real, allocatable, intent(out) :: vec(:,:)
+
+    integer :: si, ei, i, j
+
+    !! end index
+    ei = count_n( tgt_idx )
+
+    !! start index
+    if( tgt_idx == 1 ) then
+       si = 1
+       !! number of atoms in local conf: number of neighbours plus one for central
+       nloc = ei + 1
+    else
+       si = count_n( tgt_idx - 1 ) + 1
+       nloc = ei - si + 2
+    end if
+
+    ! write(*,*) "starting:",si
+    ! write(*,*) "ending:",ei
+    ! write(*,*) "nloc",nloc
+
+    ! write(*,*) "got"
+    ! do i = si, ei
+    !    write(*,*) i
+    ! end do
+    ! write(*,*) '='
+
+    allocate( idx(1:nloc) )
+    allocate( vec(1:3,1:nloc))
+
+    !! first vector is zero
+    vec(:,1) = (/0.0, 0.0, 0.0/)
+    j = 1
+    ! write(*,*) size(vec(:,2:),2)
+    ! write(*,*) size( veclist(:,si:ei),2)
+    vec(:,2:) = veclist(:,si:ei)
+    ! do i = si, ei
+    !    ! write(*,*) i, veclist(:,i)
+    !    j = j + 1
+    !    vec(:,j) = veclist(:, i )
+    ! end do
+
+    idx(1) = tgt_idx
+    idx(2:) = neighlist(2, si:ei)
+  end subroutine extract_elements
 
 
 end module m_itm_core

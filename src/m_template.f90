@@ -22,6 +22,7 @@ module m_template
      real, allocatable :: coords(:,:)
      integer :: hash
      real :: rcut
+     character(:), allocatable :: pg
    contains
      procedure :: print => t_template_print
      final :: t_template_destroy
@@ -57,6 +58,7 @@ contains
     real :: scale
     real, dimension(3) :: gc
     integer :: i
+    character(len=10) :: pg
 
     !! allocate new memory
     allocate( t_template :: this )
@@ -110,6 +112,7 @@ contains
     end select
 
 
+
     !! resize if needed
     scale = 1.0
     if( this% rescale ) then
@@ -123,9 +126,14 @@ contains
     allocate( this% typ, source = typ )
     allocate( this% coords, source = coords )
 
+    !! get point group
+    call sofi_struc_pg( nat, typ, coords, 0.1, pg, .false.)
+    allocate( this% pg, source=trim(pg) )
+
 
     !! hash
     this% hash = 0
+
   end function t_template_constructor
 
 
@@ -136,7 +144,8 @@ contains
 
     ! write(*,*) "in t_template destroy"
     if( allocated(self% typ))deallocate( self% typ)
-    if( allocated( self% coords)) deallocate( self% coords)
+    if( allocated(self% coords)) deallocate( self% coords)
+    if( allocated(self% pg)) deallocate( self% pg)
   end subroutine t_template_destroy
 
 
@@ -154,11 +163,12 @@ contains
     end if
 
     write(*,*) self% nat
-    write(*,'(2x,a,1x,i0,";" ,1x,a,1x,f8.4,";",1x,a,1x,l,";",1x,a,1x,l)') &
+    write(*,'(2x,a,1x,i0,";" ,1x,a,1x,f8.4,";",1x,a,1x,l,";",1x,a,1x,l,";",1x,a,1x,a)') &
          "mode:",self% mode, &
          "rcut:",self% rcut* self% scale, &
          "ignore_chem", self% ignore_chem, &
-         "rescale", self% rescale
+         "rescale", self% rescale, &
+         "PG:", self% pg
     !! print coords non-normalized
     do i = 1, self% nat
        write(*,*) self% typ(i), self% coords(:,i)!*self% scale! + self% origin
