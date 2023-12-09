@@ -288,6 +288,8 @@ contains
     ! write(*,*) "veclist",allocated( fptr% veclist )
     ! write(*,*) "neighlist",allocated( fptr% neighlist )
 
+    fptr% site_dh(:) = 99.9
+    fptr% site_template(:) = 0
 
     !$OMP PARALLEL PRIVATE(me, site_template, site_dh )
     me = OMP_GET_THREAD_NUM()
@@ -314,6 +316,7 @@ contains
        !    write(*,*) typ_loc(j), coords_loc(:,j)
        ! end do
 
+       ! write(*,*) "on i:", i
 
        dh_old = 99.9
        t = 0
@@ -321,7 +324,11 @@ contains
           nullify( tmplt )
           tmplt => fptr% get_template( j )
 
-          if( tmplt% nat .ne. nat_loc ) cycle
+          if( tmplt% nat .ne. nat_loc ) then
+             ! write(*,*) j, tmplt% nat, nat_loc, "skipping"
+             cycle
+          end if
+
 
           n = nat_loc
 
@@ -346,7 +353,7 @@ contains
                n, t2, c2, &
                1.8, dthr )
 
-          ! write(*,*) i, j, dh
+          ! if(me.eq.0) write(*,*) "test", i, j, dh, fptr% ntemplate
           if( dh .lt. dh_old ) then
              dh_old = dh
              t = j
@@ -354,6 +361,8 @@ contains
 
           deallocate( t1, t2 )
           deallocate( c1, c2 )
+
+          if( dh_old .le. dthr ) exit
        end do
 
        if( dh_old < dthr ) then
@@ -364,8 +373,33 @@ contains
        end if
 
 
+       ! if( me.eq.1)write(*,*) i, dh_old, t
+       if( fptr% site_template(i) .eq.0) then
+          !$OMP CRITICAL
+          block
+            type( c_ptr ) :: ccoords, ctyp
+            type( c_ptr ) :: cmode
+            real( c_double ), pointer :: r2d(:,:)
+            integer( c_int ), pointer :: i1d(:)
+            integer( c_int ) :: cerr
+            allocate( r2d, source=coords_loc)
+            ccoords=c_loc(r2d(1,1))
+            allocate( i1d, source=typ_loc )
+            ctyp = c_loc( i1d(1))
 
-       ! write(*,*) i, j, dh_old
+            cmode = f2c_string("nn")
+            cerr = itm_add_template( cptr, int(nat_loc, c_int), ctyp, ccoords, &
+                 logical(.true., c_bool), cmode, logical(.false., c_bool) )
+            deallocate( i1d, r2d )
+          end block
+          ! write(*,*) "added",fptr% ntemplate, me
+          fptr% site_template(i) = fptr% ntemplate
+          ! fptr% site_dh = 0.0
+          !$OMP END CRITICAL
+       end if
+       ! if( fptr% site_template(i) .eq. 0 ) write(*,*) i, "still 0"
+
+       ! write(*,*) i, t, dh_old
        ! matched_template = match_site( fptr% template_list, i, dthr, dh )
 
        deallocate( typ_loc, coords_loc, idx_loc )
@@ -831,5 +865,29 @@ contains
        end do
     END IF
   END FUNCTION c2f_string
+  FUNCTION f2c_string(f_string) RESULT(ptr)
+    use iso_c_binding
+    interface
+       FUNCTION c_malloc(size) BIND(C, name='malloc')
+         IMPORT :: c_ptr, c_size_t
+         IMPLICIT NONE
+         INTEGER(c_size_t), VALUE :: size
+         TYPE(c_ptr) :: c_malloc
+       END FUNCTION c_malloc
+    end interface
+
+    CHARACTER(LEN=*), INTENT(IN)           :: f_string
+    CHARACTER(LEN=1, KIND=c_char), POINTER :: c_string(:)
+    TYPE(c_ptr) :: ptr
+    INTEGER(c_size_t) :: i, n
+
+    n = LEN_TRIM(f_string)
+    ptr = c_malloc(n+1)
+    CALL C_F_POINTER(ptr, c_string, [n+1])
+    DO i=1, n
+       c_string(i) = f_string(i:i)
+    END DO
+    c_string(n+1) = c_null_char
+  END FUNCTION f2c_string
 
 end module itm

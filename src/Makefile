@@ -4,7 +4,7 @@
 F90 := gfortran
 LIB   := libitm
 
-IRALIB := ../IRA/src/libira.so
+IRALIB := $(PWD)/../IRA/src/libira.so
 
 
 ifeq ($(F90),)
