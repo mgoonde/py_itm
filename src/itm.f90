@@ -25,7 +25,7 @@ module itm
      !! results
      integer, allocatable :: site_template(:)
      real, allocatable :: site_dh(:)
-     character(len=10), allocatable :: site_pg(:)
+     integer, allocatable :: site_pg(:)
      real, allocatable :: site_strain(:)
    contains
      procedure :: get_template
@@ -64,6 +64,8 @@ contains
     if( allocated( fptr% count_n))deallocate( fptr% count_n )
     if( allocated( fptr% site_template))deallocate( fptr% site_template )
     if( allocated( fptr% site_dh))deallocate( fptr% site_dh )
+    if( allocated( fptr% site_pg))deallocate( fptr% site_pg )
+    ! if( allocated( fptr% site_strain))deallocate( fptr% site_strain )
     deallocate( fptr )
   end subroutine itm_free
 
@@ -178,10 +180,10 @@ contains
        allocate( fptr% site_dh(1:fptr% nat), source = 99.9)
        !!
        ! if( allocated( fptr% site_strain))deallocate( fptr% site_strain)
-       ! allocate( fptr% site_strain(1:nat), source=0.0)
+       ! allocate( fptr% site_strain(1:fptr% nat), source=0.0)
        !!
-       ! if( allocated( fptr% site_pg)) deallocate( fptr% site_pg)
-       ! allocate( fptr% site_pg(1:nat), source = "none")
+       if( allocated( fptr% site_pg)) deallocate( fptr% site_pg)
+       allocate( fptr% site_pg(1:fptr% nat),source=0 )
 
     case( "typ" )
        !! check if dtyp is as expected
@@ -290,6 +292,7 @@ contains
 
     fptr% site_dh(:) = 99.9
     fptr% site_template(:) = 0
+    fptr% site_pg(:) = 0
 
     !$OMP PARALLEL PRIVATE(me, site_template, site_dh )
     me = OMP_GET_THREAD_NUM()
@@ -351,7 +354,7 @@ contains
           dh = struc_get_dh( &
                tmplt% nat, t1, c1, &
                n, t2, c2, &
-               1.8, dthr )
+               1.8, dthr, .true. )
 
           ! if(me.eq.0) write(*,*) "test", i, j, dh, fptr% ntemplate
           if( dh .lt. dh_old ) then
@@ -369,6 +372,7 @@ contains
           !! !$OMP CRITICAL
           fptr% site_dh(i) = dh_old
           fptr% site_template(i) = t
+          fptr% site_pg(i) = tmplt% pg
           !! !$OMP END CRITICAL
        end if
 
@@ -389,7 +393,7 @@ contains
 
             cmode = f2c_string("nn")
             cerr = itm_add_template( cptr, int(nat_loc, c_int), ctyp, ccoords, &
-                 logical(.true., c_bool), cmode, logical(.false., c_bool) )
+                 logical(.false., c_bool), cmode, logical(.false., c_bool) )
             deallocate( i1d, r2d )
           end block
           ! write(*,*) "added",fptr% ntemplate, me
@@ -424,15 +428,19 @@ contains
 
     type( t_itm_ptr ), pointer :: fptr
     character(:), allocatable :: fname
-    integer :: dtyp, drank
+    integer :: dtyp, drank, dsize, dsize2
     integer(c_int), pointer :: i1d(:)
     real( c_double ), pointer :: r1d(:)
+    character(:), allocatable :: onestr
+    integer :: i
 
     call c_f_pointer( cptr, fptr )
 
+    ! write(*,*) "entering get_result"
     allocate( fname, source=c2f_string(name) )
     cerr = -1_c_int
 
+    ! write(*,*) "got name",fname
     ! !! get datatype
     ! dtyp = int( itm_get_dtype( name ) )
     ! if( dtyp == ITM_DTYPE_UNKNOWN ) then
@@ -454,6 +462,14 @@ contains
        allocate( r1d, source=fptr% site_dh )
        ! write(*,*) r1d(1)
        cval = c_loc( r1d(1) )
+    case( "site_pg" )
+       ! allocate( ipg(1:fptr% nat, source=0))
+       ! do i = 1, fptr% nat
+       !    ipg(i) = pg_char2int( fptr% site_pg(i) )
+       ! end do
+       allocate( i1d, source=fptr% site_pg )
+       cval = c_loc( i1d(1) )
+
     case default
        write(*,*) "unknown name:", fname
        return
@@ -492,6 +508,7 @@ contains
        end if
 
        frcut = max( frcut, tmplt% rcut )
+       write(*,*) "exiting check_fast"
     end do
 
     !! go through list again, now take the nat and see how far we are
@@ -667,7 +684,7 @@ contains
        dh = struc_get_dh( &
               tmplt% nat, t1, c1, &
               n, t2, c2, &
-              kmax_factor, thr )
+              kmax_factor, thr, .true. )
 
 #ifdef DEBUG
        write(*,*) "matched dh:", dh, i
@@ -699,28 +716,135 @@ contains
   end function itm_match
 
 
-  subroutine itm_print(cptr)bind(C,name="itm_print")
+  subroutine itm_print(cptr, cidx )bind(C,name="itm_print")
     !! print all templates in the list
     implicit none
     type( c_ptr ), value :: cptr
+    integer( c_int ), value :: cidx
     type( t_itm_ptr ), pointer :: fptr
 
     type( t_template ), pointer :: t
-    integer :: i
+    integer :: i, idx
 
     call c_f_pointer( cptr, fptr )
 
+    idx = int( cidx )
+
     do i = 1, fptr% ntemplate
-       t => fptr% get_template( i )
-       write(*,*) "got node",i
-       call t% print()
+       if( i == idx .or. idx == -1 ) then
+          t => fptr% get_template( i )
+          write(*,*) "got node",i
+          call t% print()
+       end if
     end do
 
   end subroutine itm_print
 
 
+  subroutine itm_check_fast( cptr )bind(C,name="itm_check_fast")
+    !! check among the fast templates and match them
+    use m_itm_core, only: struc_get_dh
+    use omp_lib
+    implicit none
+    type( c_ptr ), value :: cptr
+
+    type( t_itm_ptr ), pointer :: fptr
+    type( t_template ), pointer :: fast1, fast2
+    integer :: i, j, idx_i, idx_j
+    real :: dh, dthr
+    integer, allocatable :: map(:,:)
+
+    call c_f_pointer( cptr, fptr )
+
+    dthr = 0.3
+
+    allocate( map(1:fptr% ntemplate, 1:fptr% ntemplate), source=0)
+    do i = 1, fptr% ntemplate
+       map(i,i) = 1
+    end do
+
+    !$OMP PARALLEL
+    !$OMP DO PRIVATE( fast1, fast2, dh, i,j  )
+    do i = 1, fptr% ntemplate
+       fast1 => fptr% get_template( i )
+       do j = i+1, fptr% ntemplate
+          fast2 => fptr% get_template( j )
+
+          ! write(*,*) "now comparing:",i,j
+
+          if( fast1% nat .ne. fast2% nat ) then
+             ! write(*,*) "different nat",fast1% nat, fast2% nat
+             cycle
+          end if
+
+          dh = struc_get_dh( fast1% nat, fast1% typ, fast1% coords, &
+               fast2% nat, fast2% typ, fast2% coords, 1.3, dthr, .false. )
+
+          ! write(*,*) i,j,dh
+          if( dh <= dthr ) then
+
+             ! write(*,*) i, j, dh
+!             !$OMP CRITICAL
+             map( i, j ) = 1
+             map( j, i ) = 1
+!             !$OMP END CRITICAL
+          end if
+
+       end do
+    end do
+    !$OMP END DO
+    !$OMP END PARALLEL
+
+
+    !$OMP PARALLEL
+    !$OMP DO PRIVATE( idx_i, idx_j, fast1 )
+    do i = 1, fptr% nat
+       !! fast t of this struc
+       idx_i = fptr% site_template(i)
+       !! minimal index fast of this class
+       idx_j = find_first( fptr% ntemplate, map(:,idx_i) )
+       ! write(*,'(*(I1,x,:))') map(:,idx_i)
+       ! write(*,*) i, idx_i, idx_j
+       fptr% site_template(i) = idx_j
+
+       fast1 => fptr% get_template( idx_j )
+       fptr% site_pg(i) = fast1% pg
+    end do
+    !$OMP END DO
+    !$OMP END PARALLEL
+
+
+
+    deallocate( map)
+
+    ! write(*,*) fptr% nat
+    ! write(*,*)
+    ! do i = 1, fptr% nat
+    !    write(*,*) i, fptr% site_template(i), fptr% site_pg(i)
+    ! end do
+    ! write(*,*) "exiting check_fast"
+
+  end subroutine itm_check_fast
+
+
+
   !!-----------------------------------------------------------
   !! local functions
+
+  function find_first( n, arr )result(idx)
+    !! find first nonzero entry in array
+    integer, intent(in) :: n
+    integer, dimension(n), intent(in) :: arr
+    integer :: idx
+
+    integer :: i
+
+    do i = 1, n
+       if( arr(i) .eq. 0 ) cycle
+       exit
+    end do
+    idx = i
+  end function find_first
 
   function get_template( fptr, idx )result( template_pointer )
     !! get template :: get pointer to node in template_list
@@ -763,7 +887,7 @@ contains
 
     dtype = ITM_DTYPE_UNKNOWN
     select case( fname )
-    case( "nat", "typ", "neighlist", "count_n", "site_template", "ntemplate" )
+    case( "nat", "typ", "neighlist", "count_n", "site_template", "ntemplate", "site_pg" )
        dtype = ITM_DTYPE_INT
 
     case( "veclist", "site_dh" )
@@ -793,7 +917,7 @@ contains
     case( "nat", "ntemplate" )
        drank = 0
 
-    case( "site_template", "site_dh", "typ", "count_n" )
+    case( "site_template", "site_dh", "typ", "count_n", "site_pg" )
        drank = 1
 
     case( "neighlist", "veclist" )
@@ -825,7 +949,7 @@ contains
     allocate( fname, source=c2f_string(name) )
 
     select case( fname )
-    case( "site_template", "site_dh" )
+    case( "site_template", "site_dh", "site_pg" )
        allocate( fsize(1), source = fptr% nat )
        allocate( psize, source=fsize )
        csize = c_loc( psize(1) )
@@ -834,6 +958,19 @@ contains
 
     deallocate( fname )
   end function itm_get_dsize
+
+  function itm_pg_int2char( pgint )result(pgchar)bind(C,name="itm_pg_int2char")
+    use m_itm_core, only: pg_int2char
+    implicit none
+    integer( c_int ), value :: pgint
+    type( c_ptr ) :: pgchar
+
+    character(len=5) :: pg
+
+    pg = pg_int2char( pgint )
+    pgchar = f2c_string(pg)
+
+  end function itm_pg_int2char
 
 
   FUNCTION c2f_string(ptr) RESULT(f_string)

@@ -17,8 +17,10 @@ cdef extern from "itm.h":
     int itm_get_drank( char* )
     int* itm_get_dsize( t_itm_ptr*, char* )
     int itm_get_result( t_itm_ptr*, char*, void* )
-    void itm_print( t_itm_ptr* )
+    void itm_print( t_itm_ptr*, int )
     void free(void*)
+    void itm_check_fast( t_itm_ptr* )
+    char* itm_pg_int2char( int )
 
 cdef class itm:
     cdef t_itm_ptr* handle
@@ -198,8 +200,12 @@ cdef class itm:
 
         cdef void* cval
         cerr = itm_get_result( self.handle, name.encode(), &cval )
+        if cerr != 0:
+            msg="error in get_result:",cerr
+            raise ValueError(msg)
 
         cdef int* int_arr
+        cdef char* cc
         # cdef np.ndarray[np.int32_t, ndim=1] ipyval = np.empty(csize[0], dtype=np.int32)
         cdef np.ndarray[np.int32_t, ndim=1] ipyval = np.empty(psize, dtype=np.int32)
         if ctyp == 1:
@@ -207,7 +213,15 @@ cdef class itm:
             # ipyval[:] = <int[:csize[0]]>int_arr
             ipyval[:] = <int[:psize[0]]>int_arr
             free(cval)
-            return ipyval
+            if name == "site_pg":
+                ## convert int to char
+                chval = np.empty(psize, dtype="U5" )
+                for i,v in enumerate(ipyval):
+                    cc = itm_pg_int2char( v )
+                    chval[i] = cc.decode().strip()
+                return chval
+            else:
+                return ipyval
 
         cdef double* double_arr
         # cdef np.ndarray[np.float64_t, ndim=1] dpyval = np.empty(csize[0], dtype=np.float64)
@@ -219,8 +233,16 @@ cdef class itm:
             free(cval)
             return dpyval
 
-    def print_all_templates( self ):
-        itm_print( self.handle )
+
+    def print_all_templates( self, index=None ):
+        # default index=-1 :: signal to print all
+        if index is None:
+            index = -1
+        cdef int cindex = index
+        itm_print( self.handle, cindex )
+
+    def check_fast( self ):
+        itm_check_fast( self.handle )
 
 
     

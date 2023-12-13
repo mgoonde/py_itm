@@ -69,7 +69,7 @@ contains
   end subroutine struc_rescale
 
 
-  function struc_get_dh( nat1, typ1, coords1, nat2, typ2, coords2, kmax_factor, dthr )result(dh)
+  function struc_get_dh( nat1, typ1, coords1, nat2, typ2, coords2, kmax_factor, dthr, fast )result(dh)
     implicit none
     integer, intent(in) :: nat1
     integer, dimension(nat1), intent(in) :: typ1
@@ -79,6 +79,7 @@ contains
     real, dimension(3,nat2), intent(in) :: coords2
     real, intent(in) :: kmax_factor
     real, intent(in) :: dthr
+    logical, intent(in) :: fast
     real :: dh, rmsd
 
     integer, dimension(nat1) :: c1
@@ -137,6 +138,11 @@ contains
     call cshda( nat1, typ1_w, coords1_w, nat2, typ2_w, coords2_w, 1.1*dthr, found, dists )
     dh = maxval( dists )
     if( dh .lt. dthr ) return
+
+
+    !! fast mode
+    if( fast ) return
+
 
     !! flip the x, try again (man, this is arbitrary...!)
     do i = 1, nat1
@@ -218,10 +224,10 @@ contains
     dh = 0.0
     do i = 1, nat1
        rdum = coords2_w(:,i) - coords1(:,i)
-!       dh = max( dh, sqrt(dot_product(rdum,rdum)))
-       dh = dh + dot_product( rdum, rdum )
+       dh = max( dh, sqrt(dot_product(rdum,rdum)))
+       ! dh = dh + dot_product( rdum, rdum )
     end do
-    dh = sqrt(dh)/nat1
+    ! dh = sqrt(dh)/nat1
 
 
 #ifdef DEBUG
@@ -239,10 +245,11 @@ contains
   end function struc_get_dh
 
 
-  subroutine order_atoms( nat, coords )
+  subroutine order_atoms( nat, typ, coords )
     !! order atoms by distance from origin
     implicit none
     integer, intent(in) :: nat
+    integer, dimension(nat), intent(inout) :: typ
     real, dimension(3,nat), intent(inout) :: coords
 
     real, dimension(2,nat) :: d_o  !! distance, order
@@ -259,6 +266,7 @@ contains
 
     !! permute coords by d_o dim 2
     coords(:,:) = coords(:, nint(d_o(2,:)) )
+    typ(:) = typ(nint(d_o(2,:)) )
 
   end subroutine order_atoms
 
@@ -441,6 +449,81 @@ contains
     idx(1) = tgt_idx
     idx(2:) = neighlist(2, si:ei)
   end subroutine extract_elements
+
+
+  function pg_char2int( pgchar )result(pgint)
+    !! convert pg string into integer encoder
+    implicit none
+    character(*), intent(in) :: pgchar
+    integer :: pgint
+
+    integer :: i
+    integer, parameter :: npg=204
+    character(len=5), dimension(npg) :: pgdata = [&
+         '   C1', '   Cs', '   C2', '  C2h', '  C2v', '   C3', '  C3h', '  C3v', '   C4', '  C4h', '  C4v', &
+         '   C5', '  C5h', '  C5v', '   C6', '  C6h', '  C6v', '   C7', '  C7h', '  C7v', '   C8', '  C8h', &
+         '  C8v', '   C9', '  C9h', '  C9v', '  C10', ' C10h', ' C10v', '   D2', '  D2h', '  D2d', '   D3', &
+         '  D3h', '  D3d', '   D4', '  D4h', '  D4d', '   D5', '  D5h', '  D5d', '   D6', '  D6h', '  D6d', &
+         '   D7', '  D7h', '  D7d', '   D8', '  D8h', '  D8d', '   D9', '  D9h', '  D9d', '  D10', ' D10h', &
+         ' D10d', '    T', '   Th', '   Td', '    O', '   Oh', '    I', '   Ih', '   Ci', '   S4', '   S6', &
+         '   S8', '  S10', &
+         '  C1+', '  Cs+', '  C2+', ' C2h+', ' C2v+', '  C3+', ' C3h+', ' C3v+', '  C4+', ' C4h+', ' C4v+', &
+         '  C5+', ' C5h+', ' C5v+', '  C6+', ' C6h+', ' C6v+', '  C7+', ' C7h+', ' C7v+', '  C8+', ' C8h+', &
+         ' C8v+', '  C9+', ' C9h+', ' C9v+', ' C10+', 'C10h+', 'C10v+', '  D2+', ' D2h+', ' D2d+', '  D3+', &
+         ' D3h+', ' D3d+', '  D4+', ' D4h+', ' D4d+', '  D5+', ' D5h+', ' D5d+', '  D6+', ' D6h+', ' D6d+', &
+         '  D7+', ' D7h+', ' D7d+', '  D8+', ' D8h+', ' D8d+', '  D9+', ' D9h+', ' D9d+', ' D10+', 'D10h+', &
+         'D10d+', '   T+', '  Th+', '  Td+', '   O+', '  Oh+', '   I+', '  Ih+', '  Ci+', '  S4+', '  S6+', &
+         '  S8+', ' S10+', &
+         '  C1-', '  Cs-', '  C2-', ' C2h-', ' C2v-', '  C3-', ' C3h-', ' C3v-', '  C4-', ' C4h-', ' C4v-', &
+         '  C5-', ' C5h-', ' C5v-', '  C6-', ' C6h-', ' C6v-', '  C7-', ' C7h-', ' C7v-', '  C8-', ' C8h-', &
+         ' C8v-', '  C9-', ' C9h-', ' C9v-', ' C10-', 'C10h-', 'C10v-', '  D2-', ' D2h-', ' D2d-', '  D3-', &
+         ' D3h-', ' D3d-', '  D4-', ' D4h-', ' D4d-', '  D5-', ' D5h-', ' D5d-', '  D6-', ' D6h-', ' D6d-', &
+         '  D7-', ' D7h-', ' D7d-', '  D8-', ' D8h-', ' D8d-', '  D9-', ' D9h-', ' D9d-', ' D10-', 'D10h-', &
+         'D10d-', '   T-', '  Th-', '  Td-', '   O-', '  Oh-', '   I-', '  Ih-', '  Ci-', '  S4-', '  S6-', &
+         '  S8-', ' S10-' ]
+
+    do i = 1, npg
+       if( trim(adjustl(pgchar)) == trim(adjustl(pgdata(i))) ) then
+          pgint = i
+          exit
+       end if
+    end do
+  end function pg_char2int
+
+  function pg_int2char( pgint )result( pgchar )
+    !! convert pg integer encoder into string
+    implicit none
+    integer, intent(in) :: pgint
+    character(len=5) :: pgchar
+    integer, parameter :: npg=204
+    character(len=5), dimension(npg) :: pgdata = [&
+         '   C1', '   Cs', '   C2', '  C2h', '  C2v', '   C3', '  C3h', '  C3v', '   C4', '  C4h', '  C4v', &
+         '   C5', '  C5h', '  C5v', '   C6', '  C6h', '  C6v', '   C7', '  C7h', '  C7v', '   C8', '  C8h', &
+         '  C8v', '   C9', '  C9h', '  C9v', '  C10', ' C10h', ' C10v', '   D2', '  D2h', '  D2d', '   D3', &
+         '  D3h', '  D3d', '   D4', '  D4h', '  D4d', '   D5', '  D5h', '  D5d', '   D6', '  D6h', '  D6d', &
+         '   D7', '  D7h', '  D7d', '   D8', '  D8h', '  D8d', '   D9', '  D9h', '  D9d', '  D10', ' D10h', &
+         ' D10d', '    T', '   Th', '   Td', '    O', '   Oh', '    I', '   Ih', '   Ci', '   S4', '   S6', &
+         '   S8', '  S10', &
+         '  C1+', '  Cs+', '  C2+', ' C2h+', ' C2v+', '  C3+', ' C3h+', ' C3v+', '  C4+', ' C4h+', ' C4v+', &
+         '  C5+', ' C5h+', ' C5v+', '  C6+', ' C6h+', ' C6v+', '  C7+', ' C7h+', ' C7v+', '  C8+', ' C8h+', &
+         ' C8v+', '  C9+', ' C9h+', ' C9v+', ' C10+', 'C10h+', 'C10v+', '  D2+', ' D2h+', ' D2d+', '  D3+', &
+         ' D3h+', ' D3d+', '  D4+', ' D4h+', ' D4d+', '  D5+', ' D5h+', ' D5d+', '  D6+', ' D6h+', ' D6d+', &
+         '  D7+', ' D7h+', ' D7d+', '  D8+', ' D8h+', ' D8d+', '  D9+', ' D9h+', ' D9d+', ' D10+', 'D10h+', &
+         'D10d+', '   T+', '  Th+', '  Td+', '   O+', '  Oh+', '   I+', '  Ih+', '  Ci+', '  S4+', '  S6+', &
+         '  S8+', ' S10+', &
+         '  C1-', '  Cs-', '  C2-', ' C2h-', ' C2v-', '  C3-', ' C3h-', ' C3v-', '  C4-', ' C4h-', ' C4v-', &
+         '  C5-', ' C5h-', ' C5v-', '  C6-', ' C6h-', ' C6v-', '  C7-', ' C7h-', ' C7v-', '  C8-', ' C8h-', &
+         ' C8v-', '  C9-', ' C9h-', ' C9v-', ' C10-', 'C10h-', 'C10v-', '  D2-', ' D2h-', ' D2d-', '  D3-', &
+         ' D3h-', ' D3d-', '  D4-', ' D4h-', ' D4d-', '  D5-', ' D5h-', ' D5d-', '  D6-', ' D6h-', ' D6d-', &
+         '  D7-', ' D7h-', ' D7d-', '  D8-', ' D8h-', ' D8d-', '  D9-', ' D9h-', ' D9d-', ' D10-', 'D10h-', &
+         'D10d-', '   T-', '  Th-', '  Td-', '   O-', '  Oh-', '   I-', '  Ih-', '  Ci-', '  S4-', '  S6-', &
+         '  S8-', ' S10-' ]
+
+    pgchar = "none"
+    if( pgint > npg .or. pgint < 1 ) return
+
+    pgchar = trim(pgdata(pgint))
+  end function pg_int2char
 
 
 end module m_itm_core

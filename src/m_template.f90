@@ -22,7 +22,8 @@ module m_template
      real, allocatable :: coords(:,:)
      integer :: hash
      real :: rcut
-     character(:), allocatable :: pg
+     ! character(:), allocatable :: pg
+     integer :: pg
    contains
      procedure :: print => t_template_print
      final :: t_template_destroy
@@ -37,23 +38,24 @@ module m_template
 contains
 
 
-  function t_template_constructor( nat, typ, coords_in, normalize, mode, ignore_chem ) &
+  function t_template_constructor( nat, typ_in, coords_in, normalize, mode, ignore_chem ) &
        result( this )
     !! call as:
     !! type( struc_template ), pointer :: tmplt
     !!
     !! tmplt => struc_template()
     !!
-    use m_itm_core, only: struc_get_scale, struc_rescale, find_dmax, order_atoms
+    use m_itm_core
     implicit none
     type( t_template ), pointer :: this
     integer, intent(in) :: nat
-    integer, dimension(nat), intent(in) :: typ
+    integer, dimension(nat), intent(in) :: typ_in
     real, dimension(3,nat), intent(in) :: coords_in
     logical, intent(in) :: normalize
     character(*), intent(in) :: mode
     logical, intent(in) :: ignore_chem
 
+    integer, dimension(nat) :: typ
     real, dimension(3,nat) :: coords
     real :: scale
     real, dimension(3) :: gc
@@ -63,8 +65,9 @@ contains
     !! allocate new memory
     allocate( t_template :: this )
 
-    !! make a copy for resize
+    !! make a copy for resize and reorder
     coords = coords_in
+    typ = typ_in
 
     !! shift to gc
     gc = sum( coords, 2)/nat
@@ -74,7 +77,7 @@ contains
     this% origin = gc
 
     !! order atoms by distance from center
-    call order_atoms( nat, coords )
+    call order_atoms( nat, typ, coords )
 
     !! shift such that first atom at center
     gc = coords(:,1)
@@ -127,8 +130,9 @@ contains
     allocate( this% coords, source = coords )
 
     !! get point group
-    call sofi_struc_pg( nat, typ, coords, 0.1, pg, .false.)
-    allocate( this% pg, source=trim(pg) )
+    call sofi_struc_pg( nat, typ, coords, 0.3, pg, .false.)
+    ! allocate( this% pg, source=trim(pg) )
+    this% pg = pg_char2int( pg )
 
 
     !! hash
@@ -145,7 +149,7 @@ contains
     ! write(*,*) "in t_template destroy"
     if( allocated(self% typ))deallocate( self% typ)
     if( allocated(self% coords)) deallocate( self% coords)
-    if( allocated(self% pg)) deallocate( self% pg)
+    ! if( allocated(self% pg)) deallocate( self% pg)
   end subroutine t_template_destroy
 
 
