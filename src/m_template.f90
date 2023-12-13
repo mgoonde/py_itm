@@ -22,7 +22,6 @@ module m_template
      real, allocatable :: coords(:,:)
      integer :: hash
      real :: rcut
-     ! character(:), allocatable :: pg
      integer :: pg
    contains
      procedure :: print => t_template_print
@@ -155,10 +154,12 @@ contains
 
   subroutine t_template_print( self )
     !! print contents of template
+    use m_itm_core, only: pg_int2char
     implicit none
     class( t_template ), intent(in) :: self
 
     integer :: i
+    character(len=5) :: pg
 
     write(*,*) "in template_print"
     if( .not. allocated( self% typ) ) then
@@ -166,13 +167,14 @@ contains
        return
     end if
 
+    pg = pg_int2char(self% pg)
     write(*,*) self% nat
     write(*,'(2x,a,1x,i0,";" ,1x,a,1x,f8.4,";",1x,a,1x,l,";",1x,a,1x,l,";",1x,a,1x,a)') &
          "mode:",self% mode, &
          "rcut:",self% rcut* self% scale, &
          "ignore_chem", self% ignore_chem, &
          "rescale", self% rescale, &
-         "PG:", self% pg
+         "PG:", pg
     !! print coords non-normalized
     do i = 1, self% nat
        write(*,*) self% typ(i), self% coords(:,i)!*self% scale! + self% origin

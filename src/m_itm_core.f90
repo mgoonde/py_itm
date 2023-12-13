@@ -245,6 +245,114 @@ contains
   end function struc_get_dh
 
 
+  subroutine struc_match_print( nat1, typ1, coords1, nat2, typ2, coords2, kmax_factor, dthr )
+    implicit none
+    integer, intent(in) :: nat1
+    integer, dimension(nat1), intent(in) :: typ1
+    real, dimension(3,nat1), intent(in) :: coords1
+    integer, intent(in) :: nat2
+    integer, dimension(nat2), intent(in) :: typ2
+    real, dimension(3,nat2), intent(in) :: coords2
+    real, intent(in) :: kmax_factor
+    real, intent(in) :: dthr
+    real :: dh, rmsd
+
+    integer, dimension(nat1) :: c1
+    integer, dimension(nat2) :: c2
+    real, dimension(3) :: tr, str, rdum
+    real, dimension(3,3) :: rmat, srmat
+    integer, dimension(nat1) :: p
+    integer :: i, ierr, serr
+    character(512) :: msg
+
+    integer, dimension(nat2) :: found
+    real, dimension(nat2) :: dists
+    real, dimension(3,nat1) :: flipx
+    integer, dimension(nat1) :: typ1_w
+    real, dimension(3,nat1) :: coords1_w
+    integer, dimension(nat2) :: typ2_w
+    real, dimension(3,nat2) :: coords2_w
+
+
+    !! work arrays
+    typ1_w = typ1; coords1_w = coords1
+    typ2_w = typ2; coords2_w = coords2
+
+
+    dh = 999.9
+
+    !! set candidates to first index
+    c1(:) = 0; c1(1) = 1
+    c2(:) = 0; c2(1) = 1
+
+
+    call ira_unify( nat1, typ1_w, coords1_w, c1, &
+                    nat2, typ2_w, coords2_w, c2, &
+                    kmax_factor, rmat, tr, p, dh, ierr )
+    if( ierr /= 0 ) then
+       write(*,*) "err"
+       call ira_get_errmsg( ierr, msg )
+       write(*,*) trim(msg)
+    end if
+
+    typ2_w = typ2_w(p)
+    coords2_w = coords2_w(:,p)
+    do i = 1, nat2
+       coords2_w(:,i) = matmul( rmat, coords2_w(:,i) ) + tr
+    end do
+    !! call svd
+    call svdrot_m( nat1, typ1_w, coords1_w, &
+         nat2, typ2_w(1:nat1), coords2_w(:,1:nat1), srmat, str, ierr )
+    if( ierr /= 0 ) then
+       write(*,*) "err svd"
+       return
+    end if
+
+#ifdef DEBUG
+    write(*,*) "rmat from svd"
+    write(*,'(3f8.4)') srmat(1,:)
+    write(*,'(3f8.4)') srmat(2,:)
+    write(*,'(3f8.4)') srmat(3,:)
+    write(*,*) "tr from svd"
+    write(*,'(3f8.4)') str
+    write(*,*)
+#endif
+
+
+    rmat = matmul( srmat, rmat )
+    tr = matmul(srmat, tr) + str
+    ! reset
+    typ2_w = typ2(p)
+    coords2_w = coords2(:,p)
+    ! apply svd
+    do i = 1, nat2
+       coords2_w(:,i) = matmul( rmat, coords2_w(:,i) ) + tr
+    end do
+
+    ! get dh
+    dh = 0.0
+    do i = 1, nat1
+       rdum = coords2_w(:,i) - coords1(:,i)
+       dh = max( dh, sqrt(dot_product(rdum,rdum)))
+       ! dh = dh + dot_product( rdum, rdum )
+    end do
+    ! dh = sqrt(dh)/nat1
+
+
+    write(*,*) nat1
+    write(*,*) 't1, matched dh=',dh
+    do i = 1, nat1
+       write(*,*) typ1(i), coords1(:,i)
+    end do
+    write(*,*) nat2
+    write(*,*) "t2"
+    do i = 1, nat2
+       write(*,*) typ2_w(i), coords2_w(:,i)
+    end do
+  end subroutine struc_match_print
+
+
+
   subroutine order_atoms( nat, typ, coords )
     !! order atoms by distance from origin
     implicit none

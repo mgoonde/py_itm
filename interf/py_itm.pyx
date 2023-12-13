@@ -21,6 +21,7 @@ cdef extern from "itm.h":
     void free(void*)
     void itm_check_fast( t_itm_ptr* )
     char* itm_pg_int2char( int )
+    void itm_compare_templates( t_itm_ptr*, int, int )
 
 cdef class itm:
     cdef t_itm_ptr* handle
@@ -245,4 +246,8 @@ cdef class itm:
         itm_check_fast( self.handle )
 
 
+    def compare_templates( self, idx1, idx2 ):
+        cdef int cidx1=idx1
+        cdef int cidx2=idx2
+        itm_compare_templates( self.handle, cidx1, cidx2 )
     

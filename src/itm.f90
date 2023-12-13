@@ -11,11 +11,16 @@ module itm
        ITM_DTYPE_REAL    = 2, &
        ITM_DTYPE_STRING  = 3
 
+  real, parameter :: kmax_factor = 1.8
 
   type :: t_itm_ptr
      integer :: ntemplate
      type( linked_list ) :: template_list
 
+     integer :: nfast
+     type( linked_list ) :: fast_list
+
+     real :: dthr
      integer :: nat                         !! number of all atoms
      integer, allocatable :: neighlist(:,:) !! neighbor list from ovito
      real, allocatable :: veclist(:,:)      !! vector list from ovito
@@ -45,6 +50,9 @@ contains
     fptr% template_list = linked_list()
     fptr% ntemplate = 0
 
+    fptr% nfast = 0
+    fptr% fast_list = linked_list()
+
     fptr% nat = -1
 
     cptr = c_loc(fptr)
@@ -58,6 +66,7 @@ contains
     call c_f_pointer( cptr, fptr )
 
     call fptr% template_list% destroy()
+    call fptr% fast_list% destroy()
     if( allocated(fptr% veclist))deallocate( fptr% veclist )
     if( allocated(fptr% neighlist))deallocate( fptr% neighlist)
     if( allocated( fptr% typ))deallocate( fptr% typ )
@@ -277,6 +286,7 @@ contains
     call c_f_pointer( cptr, fptr )
 
     dthr = real( cthr )
+    fptr% dthr = dthr
 
     !$OMP PARALLEL
     nthread = OMP_GET_NUM_THREADS()
@@ -300,7 +310,7 @@ contains
     allocate( site_dh(1:fptr% nat), source=0.0 )
     allocate( site_template(1:fptr% nat), source=0 )
     !$OMP DO PRIVATE(nat_loc, typ_loc, coords_loc, idx_loc, tmplt, n, t1, t2, c1, c2, scale, &
-    !$OMP            dh_old, dh, t )
+    !$OMP            dh_old, dh, t ) SCHEDULE( dynamic, 100)
     do i = 1, fptr% nat
     ! do i = 293855, 293856
        call extract_elements( &
@@ -313,11 +323,14 @@ contains
           typ_loc(j) = fptr% typ( idx_loc(j))
        end do
 
-       ! write(*,*) nat_loc
-       ! write(*,*) i
-       ! do j = 1, nat_loc
-       !    write(*,*) typ_loc(j), coords_loc(:,j)
-       ! end do
+       if( i .eq. 264298 ) then
+          write(*,*) nat_loc
+          write(*,*) i
+          do j = 1, nat_loc
+             write(*,*) typ_loc(j), coords_loc(:,j)
+          end do
+       end if
+
 
        ! write(*,*) "on i:", i
 
@@ -354,9 +367,11 @@ contains
           dh = struc_get_dh( &
                tmplt% nat, t1, c1, &
                n, t2, c2, &
-               1.8, dthr, .true. )
+               kmax_factor, dthr, .true. )
 
           ! if(me.eq.0) write(*,*) "test", i, j, dh, fptr% ntemplate
+          if( i .eq. 264298)write(*,*) "try",i,j,dh
+
           if( dh .lt. dh_old ) then
              dh_old = dh
              t = j
@@ -376,6 +391,7 @@ contains
           !! !$OMP END CRITICAL
        end if
 
+       if( i .eq. 264298 ) write(*,*) "HERE",i,dh_old,t
 
        ! if( me.eq.1)write(*,*) i, dh_old, t
        if( fptr% site_template(i) .eq.0) then
@@ -508,7 +524,6 @@ contains
        end if
 
        frcut = max( frcut, tmplt% rcut )
-       write(*,*) "exiting check_fast"
     end do
 
     !! go through list again, now take the nat and see how far we are
@@ -541,7 +556,7 @@ contains
     integer, dimension(nat_in) :: typ
     real, dimension(3,nat_in) :: coords
 
-    real :: scale, candidate_match_dh, dh, kmax_factor, fthr
+    real :: scale, candidate_match_dh, dh, fthr
     real, allocatable :: dh_m(:)
     integer :: n, j, hash
 
@@ -576,7 +591,6 @@ contains
     matched_tmplt = 0
     matched_dh = 999.9
 
-    kmax_factor = 1.8
 
     !! go through list of templates, match each
     do i = 1, fptr% ntemplate
@@ -756,7 +770,7 @@ contains
 
     call c_f_pointer( cptr, fptr )
 
-    dthr = 0.3
+    dthr = fptr% dthr
 
     allocate( map(1:fptr% ntemplate, 1:fptr% ntemplate), source=0)
     do i = 1, fptr% ntemplate
@@ -778,9 +792,9 @@ contains
           end if
 
           dh = struc_get_dh( fast1% nat, fast1% typ, fast1% coords, &
-               fast2% nat, fast2% typ, fast2% coords, 1.3, dthr, .false. )
+               fast2% nat, fast2% typ, fast2% coords, kmax_factor, dthr, .false. )
 
-          ! write(*,*) i,j,dh
+          write(*,*) i,j,dh
           if( dh <= dthr ) then
 
              ! write(*,*) i, j, dh
@@ -803,12 +817,28 @@ contains
        idx_i = fptr% site_template(i)
        !! minimal index fast of this class
        idx_j = find_first( fptr% ntemplate, map(:,idx_i) )
-       ! write(*,'(*(I1,x,:))') map(:,idx_i)
-       ! write(*,*) i, idx_i, idx_j
+
+       if( i .eq. 264298 ) then
+          do j = 1, fptr% ntemplate
+             if( map(j, idx_i) .eq. 0 ) cycle
+             write(*,'(20(i4,x,:))', advance="no") j
+          end do
+          write(*,*)
+
+          ! write(*,'(*(I1,x,:))') map(:,idx_i)
+          write(*,*) i, idx_i, idx_j
+       end if
+
        fptr% site_template(i) = idx_j
 
        fast1 => fptr% get_template( idx_j )
        fptr% site_pg(i) = fast1% pg
+
+       !! if idx has changed, recompute dh to new template
+       if( idx_i /= idx_j ) then
+          !! 
+       end if
+
     end do
     !$OMP END DO
     !$OMP END PARALLEL
@@ -826,6 +856,27 @@ contains
 
   end subroutine itm_check_fast
 
+
+  subroutine itm_compare_templates(cptr, cidx1, cidx2 )bind(C,name="itm_compare_templates")
+    use m_itm_core, only: struc_match_print
+    implicit none
+    type( c_ptr ), value :: cptr
+    integer( c_int ), value :: cidx1, cidx2
+
+    type( t_itm_ptr ), pointer :: fptr
+    integer :: idx1, idx2
+    type( t_template ), pointer :: t1, t2
+
+    call c_f_pointer( cptr, fptr )
+    idx1 = int( cidx1 ); idx2 = int( cidx2 )
+
+    t1 => fptr% get_template( idx1 )
+    t2 => fptr% get_template( idx2 )
+
+
+    call struc_match_print( t1% nat, t1% typ, t1% coords, &
+         t2% nat, t2% typ, t2% coords, kmax_factor, fptr% dthr )
+  end subroutine itm_compare_templates
 
 
   !!-----------------------------------------------------------
