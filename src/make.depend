@@ -1,3 +1,4 @@
+$(OBJ)/m_canon.o : $(OBJ)/m_itm_core.o
 $(OBJ)/m_template.o : $(OBJ)/m_itm_core.o
 $(OBJ)/m_itm.o : $(OBJ)/m_perm.o
 $(OBJ)/m_itm.o : $(OBJ)/m_template.o

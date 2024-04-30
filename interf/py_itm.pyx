@@ -18,11 +18,13 @@ cdef extern from "itm.h":
     int* itm_get_dsize( t_itm_ptr*, char* )
     int itm_get_result( t_itm_ptr*, char*, void* )
     void itm_print( t_itm_ptr*, int )
+    void itm_print_canon( t_itm_ptr*, int )
     void free(void*)
     void itm_check_fast( t_itm_ptr* )
     char* itm_pg_int2char( int )
     void itm_compare_templates( t_itm_ptr*, int, int )
     void itm_compare_site_template( t_itm_ptr*, int, int )
+    void itm_compare_site_canon( t_itm_ptr*, int, int )
     void itm_compare_sites( t_itm_ptr*, int, int )
     int itm_compute2( t_itm_ptr*, double )
 
@@ -253,6 +255,14 @@ cdef class itm:
         cdef int cindex = index
         itm_print( self.handle, cindex )
 
+
+    def print_all_canon( self, index=None ):
+        # default index=-1 :: signal to print all
+        if index is None:
+            index = -1
+        cdef int cindex = index
+        itm_print_canon( self.handle, cindex )
+
     def check_fast( self ):
         itm_check_fast( self.handle )
 
@@ -271,3 +281,8 @@ cdef class itm:
         cdef int csite1=isite1
         cdef int csite2=isite2
         itm_compare_sites( self.handle, csite1, csite2 )
+
+    def compare_site_canon( self, isite, icanon ):
+        cdef int csite=isite
+        cdef int ccanon=icanon
+        itm_compare_site_canon( self.handle, csite, ccanon )

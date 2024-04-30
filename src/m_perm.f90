@@ -25,7 +25,7 @@ contains
   !!
   !! assignment for obtaining perm array from t_perm:
   !!
-  !! integer, dimension(n) :: lhs
+  !! integer, allocateble :: lhs(:)
   !! type( t_perm ) :: rhs
   !!
   !! lhs = rhs

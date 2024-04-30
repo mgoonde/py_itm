@@ -11,10 +11,12 @@ int itm_get_drank( char* );
 int* itm_get_dsize( t_itm_ptr*, char* );
 int itm_get_result( t_itm_ptr*, char*, void* );
 void itm_print( t_itm_ptr*, int );
+void itm_print_canon( t_itm_ptr*, int );
 void itm_check_fast( t_itm_ptr* );
 char* itm_pg_int2char( int );
 void itm_compare_templates( t_itm_ptr*, int, int );
 void itm_compare_site_template( t_itm_ptr*, int, int );
+void itm_compare_site_canon( t_itm_ptr*, int, int );
 void itm_compare_sites( t_itm_ptr*, int, int );
 
 

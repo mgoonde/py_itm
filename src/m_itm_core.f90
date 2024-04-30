@@ -5,6 +5,10 @@ module m_itm_core
   implicit none
 
 
+  interface add2array
+     procedure add2array_int, add2array_real
+  end interface add2array
+
 contains
 
   function struc_get_scale( nat, coords_in )result(scale)
@@ -358,12 +362,13 @@ contains
 
 
 
-  subroutine order_atoms( nat, typ, coords )
+  subroutine order_atoms( nat, typ, coords, order )
     !! order atoms by distance from origin
     implicit none
     integer, intent(in) :: nat
     integer, dimension(nat), intent(inout) :: typ
     real, dimension(3,nat), intent(inout) :: coords
+    integer, dimension(nat), intent(out) :: order
 
     real, dimension(2,nat) :: d_o  !! distance, order
     integer :: i
@@ -381,6 +386,7 @@ contains
     coords(:,:) = coords(:, nint(d_o(2,:)) )
     typ(:) = typ(nint(d_o(2,:)) )
 
+    order = nint(d_o(2,:))
   end subroutine order_atoms
 
 
@@ -753,5 +759,97 @@ contains
     ! write(*,*) "exit full ira"
   end function dh_full_ira
 
+  subroutine add2array_int( n, array, val )
+    implicit none
+    integer,              intent(in) :: n            !! current number of elements inside array
+    integer, allocatable, intent(inout) :: array(:)  !! array with deferred size (can be larger than n)
+    integer,              intent(in) :: val          !! value to add into array
+
+    integer, parameter :: delta=10
+    integer, allocatable :: tmp(:)
+    integer :: s
+
+    !! array is not yet allocated
+    if( .not. allocated(array)) then
+       allocate(array(1:delta),source=0)
+       array(1) = val
+       return
+    end if
+
+    !! array is allocated, get the size
+    s = size(array,1)
+    if( n > s ) then
+       !! error
+       write(*,*) "add2array_int::number n cannot be larger than size of the array!", n, s
+       write(*,"(10(i0,1x))") array
+       return
+    end if
+
+    !! array is allocated, and n < size(array), i.e. there is space to add element val
+    if( n < s ) then
+       array(n+1) = val
+       return
+    end if
+
+    !! array is allocated, but n==size(array), i.e. there is no space to add element,
+    !! need to reallocate
+
+    !! copy array to tmp, array is now deallocated
+    call move_alloc( array, tmp )
+    !! allocate array to increased size+delta
+    allocate( array(1:s+delta), source=0 )
+    !! copy the first s element from tmp
+    array(1:s) = tmp(:)
+    !! deallocate tmp
+    deallocate(tmp)
+    !! add new element
+    array(n+1) = val
+  end subroutine add2array_int
+  subroutine add2array_real( n, array, val )
+    implicit none
+    integer,           intent(in) :: n            !! current number of elements inside array
+    real, allocatable, intent(inout) :: array(:)  !! array with deferred size (can be larger than n)
+    real,              intent(in) :: val          !! value to add into array
+
+    integer, parameter :: delta=10
+    real, allocatable :: tmp(:)
+    integer :: s
+
+
+    !! array is not yet allocated
+    if( .not. allocated(array)) then
+       allocate(array(1:delta),source=0.0)
+       array(1) = val
+       return
+    end if
+
+    !! array is allocated, get the size
+    s = size(array,1)
+    if( n > s ) then
+       !! error
+       write(*,*) "add2array_real::number n cannot be larger than size of the array!",n,s
+       return
+    end if
+
+    !! array is allocated, and n < size(array), i.e. there is space to add element val
+    if( n < s ) then
+       array(n+1) = val
+       return
+    end if
+
+    !! array is allocated, but n==size(array), i.e. there is no space to add element,
+    !! need to reallocate
+
+    !! copy array to tmp, array is now deallocated
+    call move_alloc( array, tmp )
+    !! allocate array to increased size+delta
+    allocate( array(1:s+delta), source=0.0 )
+    !! copy the first s element from tmp
+    array(1:s) = tmp(:)
+    !! deallocate tmp
+    deallocate(tmp)
+    !! add new element
+    array(n+1) = val
+  end subroutine add2array_real
 
 end module m_itm_core

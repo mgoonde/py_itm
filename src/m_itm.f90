@@ -6,6 +6,7 @@ module m_itm
   use m_linked_list
   use m_itm_core
   use m_template
+  use m_canon
   use m_perm
   implicit none
 
@@ -17,6 +18,9 @@ module m_itm
 
      integer :: nfast
      type( linked_list ) :: fast_list
+
+     integer :: ncanon
+     type( linked_list ) :: canon_list
 
      real :: dthr
      integer :: nat                         !! number of all atoms
@@ -34,6 +38,7 @@ module m_itm
      type( t_perm ), allocatable :: perm_site2rough(:)
    contains
      procedure :: get_template
+     procedure :: get_canon
   end type t_itm_ptr
 
 
@@ -54,6 +59,9 @@ contains
     fptr% nfast = 0
     fptr% fast_list = linked_list()
 
+    fptr% ncanon = 0
+    fptr% canon_list = linked_list()
+
     fptr% nat = -1
 
     !! initialize to large
@@ -67,6 +75,7 @@ contains
 
     call fptr% template_list% destroy()
     call fptr% fast_list% destroy()
+    call fptr% canon_list% destroy()
     if( allocated(fptr% veclist))deallocate( fptr% veclist )
     if( allocated(fptr% neighlist))deallocate( fptr% neighlist)
     if( allocated( fptr% typ))deallocate( fptr% typ )
@@ -136,7 +145,6 @@ contains
   end function itm_add_template
 
 
-
   function get_template( fptr, idx )result( template_pointer )
     !! get template :: get pointer to node in template_list
     implicit none
@@ -164,6 +172,87 @@ contains
 
   end function get_template
 
+
+  function itm_add_canon( fptr, nat, typ, coords, dthr )result(ierr)
+    implicit none
+    integer :: ierr
+    type( t_itm_ptr ), pointer :: fptr
+    integer, intent(in) :: nat
+    integer, intent(in) :: typ(nat)
+    real, intent(in) :: coords(3,nat)
+    real, intent(in) :: dthr
+
+    type( t_canon ), pointer :: canon, canon1
+    class(*), pointer :: p
+    integer, allocatable :: perm(:)
+    real :: dh
+    integer :: i
+
+    !! create new canon
+    canon => t_canon( nat, typ, coords )
+
+    !! compare to equal-sized canons
+    do i = 1, fptr% ncanon
+       !! get canon
+       nullify( canon1 )
+       canon1 => get_canon( fptr, i )
+
+       if( nat /= canon1% nat ) cycle
+       !! compare to current via full IRA
+       allocate( perm(1:nat))
+       dh = dh_full_ira( nat, typ, coords, canon1% nat, canon1% typ, canon1% coords, 1.8, perm )
+       deallocate( perm )
+
+       !! at max, two structures connected by a buffer are 2*dthr apart.
+       if( dh < 2.0*dthr ) then
+          !! add canon as similar
+          call add2array( canon% n_similar, canon% similar_canon, i )
+          call add2array( canon% n_similar, canon% similar_dh, dh )
+          canon% n_similar = canon% n_similar + 1
+
+          call add2array( canon1% n_similar, canon1% similar_canon, fptr% ncanon+1 )
+          call add2array( canon1% n_similar, canon1% similar_dh, dh )
+          canon1% n_similar = canon1% n_similar + 1
+       end if
+
+    end do
+
+    !! add pointer to list
+    fptr% ncanon = fptr% ncanon + 1
+    nullify(p)
+    p => canon
+    call fptr% canon_list% add_pointer( fptr% ncanon, p )
+
+    ierr = 0
+  end function itm_add_canon
+
+
+  function get_canon( fptr, idx )result(canon_ptr)
+    !! get pointer to canon node index idx from canon_list
+    implicit none
+    class( t_itm_ptr ), intent(in) :: fptr
+    integer, intent(in) :: idx
+    type( t_canon ), pointer :: canon_ptr
+
+    class(*), pointer :: p
+
+    nullify( canon_ptr, p )
+
+    call fptr% canon_list% get( idx, p )
+    if( .not. associated(p) )then
+       write(*,*) "get_canon::p not associated, node does not exist?"
+       return
+    end if
+
+    select type( p )
+    class is( t_canon )
+       canon_ptr => p
+    class default
+       write(*,*) "get_canon::type p is wrong?"
+       return
+    end select
+
+  end function get_canon
 
 
   subroutine get_local_conf( fptr, isite, nat_loc, typ_loc, coords_loc )

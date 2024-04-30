@@ -4,6 +4,7 @@ module itm
   use m_linked_list
   use m_datatypes
   use m_template
+  use m_canon
   use m_itm
   implicit none
 
@@ -415,18 +416,21 @@ contains
     !!
     !! compare rough templates to create the list of canonical templates
     !!
+    write(*,*) "create canon list"
     call create_canon_list( fptr, dthr )
+    write(*,*) "canon list done"
 
 
     !!
     !! assign canon templates to sites
     !!
+    write(*,*) "call assign canon"
     call assign_canon2site( fptr, dthr )
 
 
 
     cerr = 0_c_int
-    ! write(*,*) "finished"
+    write(*,*) "finished"
     ! do i = 1, fptr% ntemplate
     !    write(*,*) i, count( fptr% site_template .eq. i )
     ! end do
@@ -752,6 +756,30 @@ contains
   end subroutine itm_print
 
 
+  subroutine itm_print_canon(cptr, cidx )bind(C,name="itm_print_canon")
+    !! print all templates in the list
+    implicit none
+    type( c_ptr ), value :: cptr
+    integer( c_int ), value :: cidx
+    type( t_itm_ptr ), pointer :: fptr
+
+    type( t_canon ), pointer :: c
+    integer :: i, idx
+
+    call c_f_pointer( cptr, fptr )
+
+    idx = int( cidx )
+
+    do i = 1, fptr% ncanon
+       if( i == idx .or. idx == -1 ) then
+          c => fptr% get_canon( i )
+          write(*,*) "got node",i
+          call c% print()
+       end if
+    end do
+  end subroutine itm_print_canon
+
+
   subroutine itm_check_fast( cptr )bind(C,name="itm_check_fast")
     !! check among the fast templates and match them
     use m_itm_core, only: struc_get_dh
@@ -957,7 +985,6 @@ contains
     deallocate( typ1, coords1 )
     deallocate( typ2, coords2 )
   end subroutine itm_compare_sites
-
   subroutine itm_compare_site_template( cptr, csite, ctmplt )bind(C,name="itm_compare_site_template")
     implicit none
     type( c_ptr ), value :: cptr
@@ -1048,6 +1075,98 @@ contains
     deallocate( typ2, coords2 )
     nullify(t)
   end subroutine itm_compare_site_template
+
+
+  subroutine itm_compare_site_canon( cptr, csite, ccanon )bind(C,name="itm_compare_site_canon")
+    implicit none
+    type( c_ptr ), value :: cptr
+    integer( c_int ), value :: csite, ccanon
+
+    type( t_itm_ptr ), pointer :: fptr
+    integer :: isite, icanon
+    type( t_canon ), pointer :: c
+    integer :: nat_loc
+    integer, allocatable :: typ_loc(:), typ2(:)
+    real, allocatable :: coords_loc(:,:), coords2(:,:)
+    real :: rmat(3,3), tr(3), r(3)
+    integer, allocatable :: perm(:), c1(:), c2(:)
+    real :: dh
+    integer :: ierr, i
+
+
+    isite = int( csite )
+    icanon = int( ccanon )
+
+    call c_f_pointer( cptr, fptr )
+
+    !! get the canonical template
+    c => fptr% get_canon( icanon )
+
+    call get_local_conf( fptr, isite, nat_loc, typ_loc, coords_loc )
+
+
+    write(*,*) c% nat
+    write(*,*) "original canon index:", icanon
+    do i = 1, c% nat
+       write(*,*) c% typ(i), c% coords(:,i)
+    end do
+
+
+
+    allocate( perm(1:c% nat))
+    dh = dh_cshda( nat_loc, typ_loc, coords_loc, c% nat, c% typ, c% coords, 999.9, perm )
+    write(*,*) "initial cshda:", dh
+
+    write(*,*) nat_loc
+    write(*,*) "original site index:",isite
+    do i = 1, nat_loc
+       write(*,*) typ_loc(i), coords_loc(:,i)
+    end do
+
+    if( nat_loc /= c% nat) then
+       write(*,*) "number of atoms not equal", nat_loc, c% nat
+       return
+    end if
+
+
+    allocate( c1(1:nat_loc))
+    allocate( c2(1:c% nat))
+    c1 = 0; c1(1) = 1
+    c2 = 0; c2(1) = 1
+
+    call ira_unify( nat_loc, typ_loc, coords_loc, c2, &
+         c% nat, c% typ, c% coords, c2, 1.8, rmat, tr, perm, dh, ierr )
+    deallocate( c1, c2)
+
+    !! permute
+    allocate( typ2, source=c% typ(perm))
+    allocate( coords2, source=c% coords(:,perm))
+
+    call svdrot_m( nat_loc, typ_loc, coords_loc, c% nat, typ2, coords2, rmat, tr, ierr )
+
+    !! apply
+    do i = 1, c% nat
+       coords2(:,i) = matmul(rmat, coords2(:,i)) + tr
+    end do
+
+    write(*,*) c% nat
+    write(*,*) "matched canon"
+    do i = 1, c% nat
+       write(*,*) typ2(i), coords2(:,i)
+    end do
+
+
+    write(*,*) "initial ira:",dh
+    dh = 0.0
+    do i = 1, nat_loc
+       r = coords2(:,i) - coords_loc(:,i)
+       dh = max( dh, norm2(r))
+    end do
+    write(*,*) "final dh:",dh
+
+    deallocate( typ2, coords2 )
+    nullify(c)
+  end subroutine itm_compare_site_canon
 
 
   !!-----------------------------------------------------------

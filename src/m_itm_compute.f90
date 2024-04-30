@@ -83,6 +83,7 @@ contains
        !!
        fptr% site_dh( isite ) = 0.0
        fptr% site_template( isite ) = fptr% ntemplate
+       fptr% perm_site2rough( isite ) = [ (i, i=1,nat_loc) ]
 
        !!
        !! inner loop over all isite
@@ -150,14 +151,16 @@ contains
   subroutine create_canon_list( fptr, dthr )
     use m_itm_core
     use m_template
+    use m_canon
     use omp_lib
     implicit none
     type( t_itm_ptr ), pointer :: fptr
     real, intent(in) :: dthr
 
-    integer :: i, j
+    integer :: i, j, ierr
     real :: dh
     type( t_template ), pointer :: t1, t2
+    type( t_canon ), pointer :: c
     integer, allocatable :: perm(:)
 
     write(*,*) "got ntemplate:", fptr% ntemplate
@@ -175,12 +178,16 @@ contains
        if( t1% canon_idx > 0 ) cycle
        ! if( t1% canon_dh < dthr/2.0 ) cycle
 
+       !! create new canonical template
+       ierr = itm_add_canon( fptr, t1% nat, t1% typ, t1% coords, dthr )
+
        t1% is_canon = 1
-       t1% canon_idx = i
+       t1% canon_idx = fptr% ncanon
        t1% canon_dh = 0.0
+       allocate(t1% perm_rough2canon, source=[(j,j=1,t1%nat)])
 
        !$OMP PARALLEL PRIVATE( j, t2, perm, dh )
-       !$OMP DO SCHEDULE( dynamic, 10 )
+       !$OMP DO SCHEDULE( dynamic, 5 )
        do j = i+1, fptr% ntemplate
           !!
           if( i == j ) cycle
@@ -208,18 +215,18 @@ contains
           !! 1) tmplt does not have a canon assignment yet, accept this
           !! 2) tmplt already has a canon:
           !!        overwrite with current only if dh < canon_dh
-          if( dh < 2.0*dthr ) then
+          if( dh < dthr ) then
 
              write(*,*) "compare:",i,j,dh
              select case( t2% canon_idx )
              case( -1 )
-                t2% canon_idx = i
+                t2% canon_idx = fptr% ncanon
                 t2% canon_dh = dh
                 allocate( t2% perm_rough2canon, source=perm )
 
              case default
                 if( dh < t2% canon_dh ) then
-                   t2% canon_idx = i
+                   t2% canon_idx = fptr% ncanon
                    t2% canon_dh = dh
                    if( allocated(t2% perm_rough2canon))deallocate( t2% perm_rough2canon )
                    allocate( t2% perm_rough2canon, source=perm )
@@ -238,11 +245,20 @@ contains
        !$OMP END PARALLEL
     end do
 
-    do i = 1, fptr% ntemplate
-       nullify(t1)
-       t1 => fptr% get_template(i)
-       write(*,*) i, t1% canon_idx
-    end do
+    !!
+    !!=======
+    !! NOTE: Need to "symmetrize" the similar_canon
+    !!=======
+    !!
+
+
+
+
+    ! do i = 1, fptr% ntemplate
+    !    nullify(t1)
+    !    t1 => fptr% get_template(i)
+    !    write(*,*) i, t1% canon_idx
+    ! end do
 
   end subroutine create_canon_list
 
@@ -257,33 +273,110 @@ contains
     type( t_itm_ptr ), pointer :: fptr
     real, intent(in) :: dthr
 
-    integer :: i, tmplt_idx
+    integer :: i, tmplt_idx, canon_idx, j
     type( t_template ), pointer :: t
+    type( t_canon ), pointer :: c, c_sim
 
     integer :: ncanon
-    integer, allocatable :: map_canon2idx(:)
-    !! use perm2canon(:) somehow
 
-    !! map index of template which is canon, to contiguous integers
-    ncanon = 0
-    allocate( map_canon2idx(1:fptr% ntemplate))
-    do i = 1, fptr% ntemplate
-       nullify(t)
-       t => fptr% get_template(i)
-       map_canon2idx(i) = i
-       !! template is not canon, do nothing
-       if( t% is_canon == 0) cycle
-       ncanon = ncanon+1
-       map_canon2idx(i) = ncanon
-    end do
+    integer :: nat_loc
+    integer, allocatable :: typ_loc(:)
+    real, allocatable :: coords_loc(:,:)
+    integer, allocatable :: perm(:)
 
+    real :: dd, dh
+    real :: rmat(3,3), tr(3)
+    integer :: ierr
 
+    !! omp do
+    !$OMP PARALLEL PRIVATE( i, nat_loc, typ_loc, coords_loc, tmplt_idx, t, c, j, &
+    !$OMP                   canon_idx, dd, perm, rmat, tr, dh, c_sim )
+    !$OMP DO SCHEDULE( static, 500 )
     do i = 1, fptr% nat
+    ! do i = 1, 2
 
+       !! get local conf
+       call get_local_conf( fptr, i, nat_loc, typ_loc, coords_loc )
+
+       !! get tmplt
        tmplt_idx = fptr% site_template(i)
-
        nullify(t)
        t => fptr% get_template(tmplt_idx)
+
+       !! permute local2template
+       ! allocate( perm, source=fptr% perm_site2rough(i)% perm)
+       perm = fptr% perm_site2rough(i)
+       typ_loc = typ_loc(perm)
+       coords_loc = coords_loc(:,perm)
+
+       !! permute to template local order
+       typ_loc = typ_loc(t%order)
+       coords_loc = coords_loc(:,t%order)
+
+       ! write(*,*) nat_loc
+       ! write(*,*) "loc", i
+       ! do j = 1, nat_loc
+       !    write(*,*) typ_loc(j), coords_loc(:,j)
+       ! end do
+       ! write(*,*) nat2
+       ! write(*,*) "tmplt", tmplt_idx
+       ! do j = 1, nat2
+       !    ! write(*,*) t% typ(j), t% coords(:,j)
+       !    write(*,*) typ2( j ), coords2(:,j)
+       ! end do
+
+       dd = 0.0
+       do j = 1, nat_loc
+          ! write(*,*) i, norm2( coords_loc(:,j) - coords2(:,j) )
+          dd = max( dd, norm2(coords_loc(:,j) - t% coords(:,j) ))
+       end do
+       ! if( dd.gt.1e-1)write(*,*) "loc tmpl",i, tmplt_idx, dd
+
+
+       !! permute template2canon
+       typ_loc = typ_loc( t% perm_rough2canon )
+       coords_loc = coords_loc(:, t% perm_rough2canon )
+
+       !! get the canon
+       canon_idx = t% canon_idx
+       nullify(c)
+       c => fptr% get_canon( canon_idx )
+
+
+       !! first guess is current canon:
+       !! one-shot svd+cshda for local and canon
+       call svdrot_m( c% nat, c% typ, c% coords, nat_loc, typ_loc, coords_loc, rmat, tr, ierr )
+       do j = 1, nat_loc
+          coords_loc(:,j) = matmul(rmat, coords_loc(:,j)) + tr
+       end do
+       dd = dh_cshda( c%nat, c%typ, c%coords, nat_loc, typ_loc, coords_loc, 999.9, perm )
+       ! if(dd.gt.1e-2)write(*,*) i, canon_idx, dd
+
+
+       !! worst case... this should be check on d > (dAB - dthr )
+       if( dd > dthr/2.0 ) then
+          !! loop through all similar to canon
+          !! to see if any has lower dh
+          do j = 1, c% n_similar
+             !! full IRA dh
+             nullify( c_sim )
+             c_sim => fptr% get_canon( c% similar_canon(j) )
+             !! get dh
+             dh = dh_full_ira( c_sim%nat, c_sim%typ, c_sim%coords, nat_loc, typ_loc, coords_loc, 1.4, perm )
+             if( dh < dd ) then
+                write(*,*) "lower dh:",i,canon_idx,c%similar_canon(j),dd, dh
+                canon_idx = c%similar_canon(j)
+                dd = dh
+             end if
+          end do
+       endif
+
+       deallocate( perm )
+       ! deallocate( typ_loc, coords_loc )
+
+       !! set final data
+       fptr% site_template(i) = canon_idx
+       fptr% site_dh(i) = dd
 
        !! template is canon, do nothing
        ! if( t% is_canon > 0 ) cycle
@@ -291,9 +384,13 @@ contains
        !! template is not canon, replace
        ! write(*,*) i, tmplt_idx, t% canon_idx, fptr% site_dh(i), t% canon_dh
        ! fptr% site_template(i) = map_canon2idx( t% canon_idx )
-       fptr% site_template(i) = t% canon_idx
-       fptr% site_dh(i) = fptr% site_dh(i) + t% canon_dh
+       ! fptr% site_template(i) = t% canon_idx
+       ! fptr% site_dh(i) = fptr% site_dh(i) + t% canon_dh
     end do
+    !$OMP END DO
+    !$OMP END PARALLEL
+    !! omp end do
+
 
 
 

@@ -20,6 +20,7 @@ module m_template
      integer :: nat
      integer, allocatable :: typ(:)
      real, allocatable :: coords(:,:)
+     integer, allocatable :: order(:)
      integer :: hash
      real :: rcut
      integer :: pg
@@ -64,6 +65,7 @@ contains
 
     integer, dimension(nat) :: typ
     real, dimension(3,nat) :: coords
+    integer, dimension(nat) :: order
     real :: scale
     real, dimension(3) :: gc
     integer :: i
@@ -84,7 +86,7 @@ contains
     this% origin = gc
 
     !! order atoms by distance from center
-    call order_atoms( nat, typ, coords )
+    call order_atoms( nat, typ, coords, order )
 
     !! shift such that first atom at center
     gc = coords(:,1)
@@ -139,6 +141,7 @@ contains
     this% nat = nat
     allocate( this% typ, source = typ )
     allocate( this% coords, source = coords )
+    allocate( this% order, source = order )
 
     !! get point group
     call sofi_struc_pg( nat, typ, coords, 0.3, pg, .false.)
@@ -160,6 +163,7 @@ contains
     ! write(*,*) "in t_template destroy"
     if( allocated(self% typ))deallocate( self% typ)
     if( allocated(self% coords)) deallocate( self% coords)
+    if( allocated(self% order))deallocate(self% order)
     ! if( allocated(self% pg)) deallocate( self% pg)
 
     if( allocated( self% similar_template_idx)) deallocate( self% similar_template_idx)
