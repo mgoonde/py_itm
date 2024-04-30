@@ -285,6 +285,11 @@ contains
     c1(:) = 0; c1(1) = 1
     c2(:) = 0; c2(1) = 1
 
+    !! error for cshda
+    if( nat1 /= nat2 ) return
+
+    call cshda( nat1, typ1_w, coords1_w, nat2, typ2_w, coords2_w, 999.9, found, dists )
+    write(*,*) "initial csdha dh:",maxval(dists)
 
     call ira_unify( nat1, typ1_w, coords1_w, c1, &
                     nat2, typ2_w, coords2_w, c2, &
@@ -632,6 +637,121 @@ contains
 
     pgchar = trim(pgdata(pgint))
   end function pg_int2char
+
+
+  !> @details
+  !! obtain directly dh of two structures from cshda. If not below dthr, dh can be incorrect (huge value)
+  function dh_cshda( nat1, typ1, coords1, nat2, typ2, coords2, dthr, perm ) result(dh)
+    integer, intent(in) :: nat1
+    integer, intent(in) :: typ1( nat1 )
+    real,    intent(in) :: coords1( 3, nat1 )
+    integer, intent(in) :: nat2
+    integer, intent(in) :: typ2( nat2 )
+    real,    intent(in) :: coords2( 3, nat2 )
+    real,    intent(in) :: dthr
+    integer, intent(out) :: perm(nat2)
+    real :: dh
+
+    real, allocatable :: dists(:)
+
+    dh = 999.9
+    if( nat1 /= nat2 ) return
+
+    allocate( dists(1:nat2))
+
+    call cshda( nat1, typ1, coords1, nat2, typ2, coords2, dthr, perm, dists )
+
+    dh = maxval( dists(1:nat1), 1)
+    deallocate( dists )
+  end function dh_cshda
+
+
+  function dh_full_ira( nat1, typ1, coords1, nat2, typ2_in, coords2_in, kmax, perm ) result(dh)
+    implicit none
+    integer, intent(in) :: nat1
+    integer, intent(in) :: typ1(nat1)
+    real,    intent(in) :: coords1(3,nat1)
+    integer, intent(in) :: nat2
+    integer, intent(in) :: typ2_in(nat2)
+    real,    intent(in) :: coords2_in(3,nat2)
+    real,    intent(in) :: kmax
+    integer, intent(out) :: perm(nat2)
+    real :: dh
+
+    !! local arrays
+    integer :: typ2(nat2)
+    real :: coords2(3,nat2)
+    integer :: c1(nat1), c2(nat2)
+    real :: rmat(3,3), tr(3)
+    real :: dx, dy, dz
+    integer :: ierr
+    character(512) :: msg
+    integer :: i
+
+    ! write(*,*) "enter full ira"
+    dh = 999.9
+    if( nat1 /= nat2 ) return
+
+    !! copy input struc2
+    typ2 = typ2_in
+    coords2 = coords2_in
+
+    !! candidates
+    c1 = 0; c1(1) = 1
+    c2 = 0; c2(1) = 1
+
+    call ira_unify( nat1, typ1, coords1, c1, &
+         nat2, typ2, coords2, c2, &
+         kmax, rmat, tr, perm, dh, ierr )
+    if( ierr /= 0 ) then
+       call ira_get_errmsg(ierr, msg)
+       write(*,*) trim(msg)
+    end if
+    ! write(*,*) dh
+    ! write(*,*) "rmat from ira_unify"
+    ! write(*,'(3f8.4)') rmat(1,:)
+    ! write(*,'(3f8.4)') rmat(2,:)
+    ! write(*,'(3f8.4)') rmat(3,:)
+    ! write(*,*) "tr from ira_unify"
+    ! write(*,'(3f8.4)') tr
+    ! write(*,*)
+
+
+    !! apply perm
+    typ2 = typ2(perm)
+    coords2 = coords2(:,perm)
+
+    !! get svd
+    call svdrot_m( nat1, typ1, coords1, nat2, typ2, coords2, rmat, tr, ierr )
+    if( ierr /= 0 ) then
+       write(*,*) "err svd"
+       return
+    end if
+    ! write(*,*) "rmat from svd"
+    ! write(*,'(3f8.4)') rmat(1,:)
+    ! write(*,'(3f8.4)') rmat(2,:)
+    ! write(*,'(3f8.4)') rmat(3,:)
+    ! write(*,*) "tr from svd"
+    ! write(*,'(3f8.4)') tr
+    ! write(*,*)
+
+    !! apply
+    do i = 1, nat2
+       coords2(:,i) = matmul(rmat, coords2(:,i)) + tr
+    end do
+
+    dh = 0.0
+    !! get final dh
+    do i = 1, nat1
+       dx = coords2(1,i) - coords1(1,i)
+       dy = coords2(2,i) - coords1(2,i)
+       dz = coords2(3,i) - coords1(3,i)
+       dh = max( dh, dx*dx + dy*dy + dz*dz )
+    end do
+    dh = sqrt(dh)
+
+    ! write(*,*) "exit full ira"
+  end function dh_full_ira
 
 
 end module m_itm_core

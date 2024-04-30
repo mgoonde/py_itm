@@ -23,6 +23,14 @@ module m_template
      integer :: hash
      real :: rcut
      integer :: pg
+     integer, allocatable :: similar_template_idx(:)
+     real, allocatable :: similar_template_dh(:)
+
+     !! info for the canonical templates:
+     integer :: is_canon   !! 0=not assigned yet, 1=template is canon, 2=template has canon
+     integer :: canon_idx  !! index to template which is canon of this template
+     real :: canon_dh
+     integer, allocatable :: perm_rough2canon(:)
    contains
      procedure :: print => t_template_print
      final :: t_template_destroy
@@ -86,6 +94,10 @@ contains
     this% origin = this% origin + gc
 
 
+    !! index to canonical template
+    this% canon_idx = -1
+    this% canon_dh = 990.9
+    this% is_canon = 0
 
 
     this% ignore_chem = ignore_chem
@@ -149,6 +161,10 @@ contains
     if( allocated(self% typ))deallocate( self% typ)
     if( allocated(self% coords)) deallocate( self% coords)
     ! if( allocated(self% pg)) deallocate( self% pg)
+
+    if( allocated( self% similar_template_idx)) deallocate( self% similar_template_idx)
+    if( allocated( self% similar_template_dh)) deallocate( self% similar_template_dh)
+    if( allocated( self% perm_rough2canon))deallocate( self% perm_rough2canon)
   end subroutine t_template_destroy
 
 
@@ -180,6 +196,15 @@ contains
        write(*,*) self% typ(i), self% coords(:,i)!*self% scale! + self% origin
     end do
 
+    if( allocated( self% similar_template_idx )) then
+       write(*,*) "similar templates: idx, dh"
+       do i = 1, size(self% similar_template_idx)
+          if( self% similar_template_dh(i) > 900.0 ) cycle
+          write(*,"(i0,2x,f9.4)") self% similar_template_idx(i), self% similar_template_dh(i)
+       end do
+    end if
+
+    write(*,*) "canon_idx",self% canon_idx
   end subroutine t_template_print
 
 

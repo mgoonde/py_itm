@@ -14,3 +14,9 @@ void itm_print( t_itm_ptr*, int );
 void itm_check_fast( t_itm_ptr* );
 char* itm_pg_int2char( int );
 void itm_compare_templates( t_itm_ptr*, int, int );
+void itm_compare_site_template( t_itm_ptr*, int, int );
+void itm_compare_sites( t_itm_ptr*, int, int );
+
+
+
+int itm_compute2( t_itm_ptr*, double );

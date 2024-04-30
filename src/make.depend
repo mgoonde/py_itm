@@ -1,0 +1,5 @@
+$(OBJ)/m_template.o : $(OBJ)/m_itm_core.o
+$(OBJ)/m_itm.o : $(OBJ)/m_perm.o
+$(OBJ)/m_itm.o : $(OBJ)/m_template.o
+$(OBJ)/m_itm.o : $(OBJ)/m_linked_list.o
+$(OBJ)/m_itm_compute.o : $(OBJ)/m_itm_core.o

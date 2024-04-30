@@ -2,40 +2,10 @@ module itm
 
   use iso_c_binding
   use m_linked_list
+  use m_datatypes
   use m_template
+  use m_itm
   implicit none
-
-  integer, parameter :: &
-       ITM_DTYPE_UNKNOWN = -1, &
-       ITM_DTYPE_INT     = 1, &
-       ITM_DTYPE_REAL    = 2, &
-       ITM_DTYPE_STRING  = 3
-
-  real, parameter :: kmax_factor = 1.8
-
-  type :: t_itm_ptr
-     integer :: ntemplate
-     type( linked_list ) :: template_list
-
-     integer :: nfast
-     type( linked_list ) :: fast_list
-
-     real :: dthr
-     integer :: nat                         !! number of all atoms
-     integer, allocatable :: neighlist(:,:) !! neighbor list from ovito
-     real, allocatable :: veclist(:,:)      !! vector list from ovito
-     integer, allocatable :: count_n(:)     !! cumulative sum of neighs
-     integer, allocatable :: typ(:)         !! all atomic types
-     !!
-     !! results
-     integer, allocatable :: site_template(:)
-     real, allocatable :: site_dh(:)
-     integer, allocatable :: site_pg(:)
-     real, allocatable :: site_strain(:)
-   contains
-     procedure :: get_template
-  end type t_itm_ptr
-
 
 contains
 
@@ -44,17 +14,7 @@ contains
     type( t_itm_ptr ), pointer :: fptr
     type( c_ptr ) :: cptr
 
-    allocate( t_itm_ptr :: fptr )
-
-    !! initialize linked list
-    fptr% template_list = linked_list()
-    fptr% ntemplate = 0
-
-    fptr% nfast = 0
-    fptr% fast_list = linked_list()
-
-    fptr% nat = -1
-
+    fptr => itm_init()
     cptr = c_loc(fptr)
   end function itm_create
 
@@ -78,7 +38,8 @@ contains
     deallocate( fptr )
   end subroutine itm_free
 
-  function itm_add_template( cptr, nat_in, typ_in, coords_in, normalize, cmode, cignore_chem ) &
+  !! itm_add_template C-wrapper
+  function citm_add_template( cptr, nat_in, typ_in, coords_in, normalize, cmode, cignore_chem ) &
        result(cerr)bind(C, name="itm_add_template")
     implicit none
     type( c_ptr ), value :: cptr
@@ -91,19 +52,15 @@ contains
     integer( c_int ) :: cerr
 
     type( t_itm_ptr ), pointer :: fptr
-    type( t_template ), pointer :: tmplt
-    class(*), pointer :: p
 
-    integer :: nat, i
+    integer :: nat
     integer( c_int ), pointer :: ctyp(:)
     real( c_double ), pointer :: ccoords(:,:)
     integer, dimension(nat_in) :: typ
     real, dimension(3,nat_in) :: coords
-    real :: scale
     logical :: rescale, ignore_chem
     character(:), allocatable :: mode
 
-    cerr = 0_c_int
     call c_f_pointer( cptr, fptr )
 
     !! cast input data
@@ -114,28 +71,13 @@ contains
 
     typ = int( ctyp )
     coords = real( ccoords )
-
-    !! check if identical template already exists
-    ! do i = 1, fptr% ntemplate
-    ! end do
-
-
-    !! create new template
-    nullify( tmplt )
     rescale = logical( normalize )
     ignore_chem = logical( cignore_chem )
-    ! write(*,*) "add received ignore_chem:",ignore_chem
 
-    tmplt => t_template( nat, typ, coords, rescale, mode, ignore_chem )
-
-    !! add ptr to list
-    fptr% ntemplate = fptr% ntemplate + 1
-    nullify(p)
-    p => tmplt
-    call fptr% template_list% add_pointer( fptr% ntemplate, p )
+    cerr = int( itm_add_template( fptr, nat, typ, coords, rescale, mode, ignore_chem ), c_int )
 
     deallocate( mode )
-  end function itm_add_template
+  end function citm_add_template
 
 
   function itm_set_data( cptr, cname, ctyp, crank, csize, cval)result(cerr)bind(C, name="itm_set_data")
@@ -193,6 +135,9 @@ contains
        !!
        if( allocated( fptr% site_pg)) deallocate( fptr% site_pg)
        allocate( fptr% site_pg(1:fptr% nat),source=0 )
+       !!
+       if( allocated( fptr% perm_site2rough))deallocate(fptr% perm_site2rough)
+       allocate( fptr% perm_site2rough(1:fptr% nat))
 
     case( "typ" )
        !! check if dtyp is as expected
@@ -408,7 +353,7 @@ contains
             ctyp = c_loc( i1d(1))
 
             cmode = f2c_string("nn")
-            cerr = itm_add_template( cptr, int(nat_loc, c_int), ctyp, ccoords, &
+            cerr = citm_add_template( cptr, int(nat_loc, c_int), ctyp, ccoords, &
                  logical(.false., c_bool), cmode, logical(.false., c_bool) )
             deallocate( i1d, r2d )
           end block
@@ -434,6 +379,58 @@ contains
 
   end function itm_compute
 
+
+
+  function itm_compute2( cptr, cthr )result( cerr )bind(C, name="itm_compute2" )
+    use m_itm_compute
+    implicit none
+    type( c_ptr ), value :: cptr
+    real( c_double ), value :: cthr
+    integer( c_int ) :: cerr
+
+    type( t_itm_ptr ), pointer :: fptr
+    real :: dthr
+
+
+    call c_f_pointer( cptr, fptr )
+    dthr = real( cthr )
+
+    !! initial values for result arrays
+    fptr% site_dh = 99.9
+    fptr% site_template = -1
+    fptr% site_pg = -1
+
+    !!
+    !! loop over any existing templates
+    !!
+    call check_pre_templates( fptr, dthr )
+
+
+    !!
+    !! create list of "rough" templates, aka one-shot cshda
+    !!
+    call create_rough_list( fptr, dthr )
+
+
+    !!
+    !! compare rough templates to create the list of canonical templates
+    !!
+    call create_canon_list( fptr, dthr )
+
+
+    !!
+    !! assign canon templates to sites
+    !!
+    call assign_canon2site( fptr, dthr )
+
+
+
+    cerr = 0_c_int
+    ! write(*,*) "finished"
+    ! do i = 1, fptr% ntemplate
+    !    write(*,*) i, count( fptr% site_template .eq. i )
+    ! end do
+  end function itm_compute2
 
   function itm_get_result( cptr, name, cval ) result( cerr ) bind(C, name="itm_get_result" )
     implicit none
@@ -879,6 +876,180 @@ contains
   end subroutine itm_compare_templates
 
 
+  subroutine itm_compare_sites( cptr, csite1, csite2 )bind(C, name="itm_compare_sites")
+    implicit none
+    type( c_ptr ), value :: cptr
+    integer( c_int ), value :: csite1, csite2
+
+    type( t_itm_ptr ), pointer :: fptr
+    integer :: isite1, isite2
+    integer :: nat1, nat2
+    integer, allocatable :: typ1(:), typ2(:)
+    real, allocatable :: coords1(:,:), coords2(:,:)
+    integer :: i
+    real :: rmat(3,3), tr(3), r(3)
+    integer, allocatable :: perm(:)
+    real :: dh
+    integer, allocatable :: c1(:), c2(:)
+    integer :: ierr
+
+
+    call c_f_pointer( cptr, fptr )
+
+    isite1 = int( csite1 )
+    isite2 = int( csite2 )
+
+    call get_local_conf(fptr, isite1, nat1, typ1, coords1 )
+    call get_local_conf(fptr, isite2, nat2, typ2, coords2 )
+
+    allocate( perm(1:nat2))
+
+
+
+    if( nat1 /= nat2 ) then
+       write(*,*) "number of atoms not equal"
+       return
+    end if
+
+    write(*,*) nat1
+    write(*,*) "original isite:",isite1
+    do i = 1, nat1
+       write(*,*) typ1(i), coords1(:,i)
+    end do
+
+
+    allocate( c1(1:nat1))
+    allocate( c2(1:nat2))
+    c1 = 0; c1(1) = 1
+    c2 = 0; c2(1) = 1
+
+    call ira_unify( nat1, typ1, coords1, c2, &
+         nat2, typ2, coords2, c2, 1.8, rmat, tr, perm, dh, ierr )
+
+    deallocate( c1, c2)
+
+    !! permute
+    typ2 = typ2(perm)
+    coords2(:,:) = coords2(:,perm)
+
+    call svdrot_m( nat1, typ1, coords1, nat2, typ2, coords2, rmat, tr, ierr )
+
+    !! apply
+    do i = 1, nat2
+       coords2(:,i) = matmul(rmat, coords2(:,i)) + tr
+    end do
+
+    write(*,*) nat2
+    write(*,*) "matched isite:",isite2
+    do i = 1, nat2
+       write(*,*) typ2(i), coords2(:,i)
+    end do
+
+
+    write(*,*) "initial ira:",dh
+    dh = 0.0
+    do i = 1, nat1
+       r = coords2(:,i) - coords1(:,i)
+       dh = max( dh, norm2(r))
+    end do
+    write(*,*) "final dh:",dh
+
+    deallocate( typ1, coords1 )
+    deallocate( typ2, coords2 )
+  end subroutine itm_compare_sites
+
+  subroutine itm_compare_site_template( cptr, csite, ctmplt )bind(C,name="itm_compare_site_template")
+    implicit none
+    type( c_ptr ), value :: cptr
+    integer( c_int ), value :: csite, ctmplt
+
+    type( t_itm_ptr ), pointer :: fptr
+    integer :: isite, itmplt
+    type( t_template ), pointer :: t
+    integer :: nat_loc
+    integer, allocatable :: typ_loc(:), typ2(:)
+    real, allocatable :: coords_loc(:,:), coords2(:,:)
+    real :: rmat(3,3), tr(3), r(3)
+    integer, allocatable :: perm(:), c1(:), c2(:)
+    real :: dh
+    integer :: ierr, i
+
+
+    isite = int( csite )
+    itmplt = int( ctmplt )
+
+    call c_f_pointer( cptr, fptr )
+
+    !! get the template
+    t => fptr% get_template( itmplt )
+
+    call get_local_conf( fptr, isite, nat_loc, typ_loc, coords_loc )
+
+
+    write(*,*) t% nat
+    write(*,*) "original template index:", itmplt
+    do i = 1, t% nat
+       write(*,*) t% typ(i), t% coords(:,i)
+    end do
+
+
+
+    allocate( perm(1:t% nat))
+    dh = dh_cshda( nat_loc, typ_loc, coords_loc, t% nat, t% typ, t% coords, 999.9, perm )
+    write(*,*) "initial cshda:", dh
+
+    write(*,*) nat_loc
+    write(*,*) "original site index:",isite
+    do i = 1, nat_loc
+       write(*,*) typ_loc(i), coords_loc(:,i)
+    end do
+
+    if( nat_loc /= t% nat) then
+       write(*,*) "number of atoms not equal"
+       return
+    end if
+
+
+    allocate( c1(1:nat_loc))
+    allocate( c2(1:t% nat))
+    c1 = 0; c1(1) = 1
+    c2 = 0; c2(1) = 1
+
+    call ira_unify( nat_loc, typ_loc, coords_loc, c2, &
+         t% nat, t% typ, t% coords, c2, 1.8, rmat, tr, perm, dh, ierr )
+    deallocate( c1, c2)
+
+    !! permute
+    allocate( typ2, source=t% typ(perm))
+    allocate( coords2, source=t% coords(:,perm))
+
+    call svdrot_m( nat_loc, typ_loc, coords_loc, t% nat, typ2, coords2, rmat, tr, ierr )
+
+    !! apply
+    do i = 1, t% nat
+       coords2(:,i) = matmul(rmat, coords2(:,i)) + tr
+    end do
+
+    write(*,*) t% nat
+    write(*,*) "matched template"
+    do i = 1, t% nat
+       write(*,*) typ2(i), coords2(:,i)
+    end do
+
+
+    write(*,*) "initial ira:",dh
+    dh = 0.0
+    do i = 1, nat_loc
+       r = coords2(:,i) - coords_loc(:,i)
+       dh = max( dh, norm2(r))
+    end do
+    write(*,*) "final dh:",dh
+
+    deallocate( typ2, coords2 )
+    nullify(t)
+  end subroutine itm_compare_site_template
+
+
   !!-----------------------------------------------------------
   !! local functions
 
@@ -897,32 +1068,7 @@ contains
     idx = i
   end function find_first
 
-  function get_template( fptr, idx )result( template_pointer )
-    !! get template :: get pointer to node in template_list
-    implicit none
-    class( t_itm_ptr ), intent(in) :: fptr
-    integer, intent(in) :: idx
-    type( t_template ), pointer :: template_pointer
 
-    class(*), pointer :: p
-
-    nullify( template_pointer, p )
-
-    call fptr% template_list% get( idx, p)
-    if( .not.associated(p) ) then
-       write(*,*) "get_template::p not associated, node does not exist?"
-       return
-    end if
-
-    select type( p )
-    class is( t_template )
-       template_pointer => p
-    class default
-       write(*,*) "get_template::type p is wrong?"
-       return
-    end select
-
-  end function get_template
 
   ! function itm_get_dtype( cptr, name )result(ctype)bind(C,name="itm_get_dtype")
   function itm_get_dtype( name )result(ctype)bind(C,name="itm_get_dtype")

@@ -22,6 +22,9 @@ cdef extern from "itm.h":
     void itm_check_fast( t_itm_ptr* )
     char* itm_pg_int2char( int )
     void itm_compare_templates( t_itm_ptr*, int, int )
+    void itm_compare_site_template( t_itm_ptr*, int, int )
+    void itm_compare_sites( t_itm_ptr*, int, int )
+    int itm_compute2( t_itm_ptr*, double )
 
 cdef class itm:
     cdef t_itm_ptr* handle
@@ -163,6 +166,14 @@ cdef class itm:
         cdef int cerr
         cerr = itm_compute( self.handle, cthr )
 
+    def compute2( self, dthr=None ):
+        # default dthr=0.3
+        if dthr is None:
+            dthr = 0.3
+        cdef double cthr=dthr
+        cdef int cerr
+        cerr = itm_compute2( self.handle, cthr )
+
     def match(self, nat, np.ndarray[int,ndim=1] typ, np.ndarray[double,ndim=2] coords, thr):
 
         cdef double matched_dh
@@ -250,4 +261,13 @@ cdef class itm:
         cdef int cidx1=idx1
         cdef int cidx2=idx2
         itm_compare_templates( self.handle, cidx1, cidx2 )
-    
+
+    def compare_site_template( self, isite, itmplt ):
+        cdef int csite=isite
+        cdef int ctmplt=itmplt
+        itm_compare_site_template( self.handle, csite, ctmplt )
+
+    def compare_sites( self, isite1, isite2 ):
+        cdef int csite1=isite1
+        cdef int csite2=isite2
+        itm_compare_sites( self.handle, csite1, csite2 )

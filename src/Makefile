@@ -4,7 +4,9 @@
 F90 := gfortran
 LIB   := libitm
 
-IRALIB := $(PWD)/../IRA/src/libira.so
+#IRALIB := $(PWD)/../IRA/src/libira.so
+IRALIB := /home/mgunde/clusters/IterativeRotationsAssignments/src/libira.so
+#IRALIB := /home/mgunde/IRA/src/libira.so
 
 
 ifeq ($(F90),)
@@ -72,7 +74,7 @@ $(LIB): $(modulo) $(apifile.o) $(nautyfile.o)
 # object files
 
 $(OBJ)/%.o: $(SRC)/%.f90
-	$(F90) $(MOD)  -c $(FLAGS)  $< -o $@
+	$(F90) $(MOD)  -c $(FLAGS)  $< -o $@ $(IRALIB)
 
 
 # --- SYSTEM INSTALLATION::
